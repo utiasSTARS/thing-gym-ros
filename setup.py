@@ -10,6 +10,6 @@ setup(
     author_email='trevor.ablett@robotics.utias.utoronto.ca',
     license='MIT',
     packages=find_packages(),
-    install_requires=['rospkg', 'rosdep', 'ros_np_tools'],
+    install_requires=['rospkg', 'rosdep', 'ros_np_tools', 'empy'],
     include_package_data=True
 )
