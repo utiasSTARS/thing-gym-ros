@@ -31,7 +31,7 @@ alt_depth_topic: null       # if different from default from kinect or sim kinec
 
 # base params (if moving_base is true -- otherwise ignored)
 base_theta_maximums: [-.4, .4]    # radians based on making a circle around the workspace center
-cam_workspace_distance: .3        # meters from cam frame to workspace center
+cam_workspace_distance: .8        # meters from cam frame to workspace center
 base_reset_noise: .02             # std in meters and radians for resets of base
 
 # other data
