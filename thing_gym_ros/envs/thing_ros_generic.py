@@ -34,7 +34,7 @@ from thing_gym_ros_catkin.msg import KeyboardTrigger
 
 
 class ThingRosEnv(gym.Env):
-    # todo implement as needed
+    # implement as needed
     # CONTROL_TYPES = ('delta_tool, delta_joint, pos_tool, pos_joint, vel_tool, vel_joint')
     CONTROL_TYPES = ('delta_tool')
 
@@ -350,11 +350,9 @@ class ThingRosEnv(gym.Env):
 
         return obs, r, done, info
 
-
-
     def _limit_action(self, action):
         """ Limit the desired action based on pos and vel maximums. """
-
+        #TODO
 
     def reset(self):
         """ Reset the environment to the beginning of an episode.
@@ -434,6 +432,7 @@ class ThingRosEnv(gym.Env):
             self._reset_helper()
 
         # generate observation for return -- need published trajectories above to be completed
+        # todo continue here
         obs = None
 
         # other resets
@@ -455,7 +454,7 @@ class ThingRosEnv(gym.Env):
     def _reset_helper(self):
         """ Called within reset, but to be overridden by child classes. This should somehow help the
         experimenter reset objects to a new random pose, possibly with instructions."""
-        pass
+        raise NotImplementedError('_reset_helper should be implemented by child classes.')
 
     def render(self, mode='human'):
         if mode == 'human':
@@ -468,17 +467,6 @@ class ThingRosEnv(gym.Env):
                 self.gui_get_data_thread = Thread(target=self._gui_data_worker)
                 self.gui_get_data_thread.start()
                 self.gui_send_timer = rospy.Timer(rospy.Duration.from_sec(.1), self.__gui_timer_handler)
-
-                # for i in range(100000):
-                #
-                #     self.gui_lock.acquire()
-                #     print(self._main_odom_base_pos_eul)
-                #     self.gui_lock.release()
-                #     rospy.sleep(.5)
-                # if QtWidgets.QApplication.instance() is None:
-                #     self.app = QtWidgets.QApplication(sys.argv)
-                # self.gui = ThingRosGenericGui(self)
-                # self.gui.show()
 
     def gui_worker(self, env_to_gui_q, gui_to_env_q):
         from PyQt5 import QtGui, QtCore, uic, QtWidgets
@@ -499,15 +487,6 @@ class ThingRosEnv(gym.Env):
             self.gui_lock.release()
 
     def __gui_timer_handler(self, e):
-        # get data from queue
-        # try:
-        #     gui_data_dict = self.gui_to_env_q.get_nowait()
-        #     self.gui_lock.acquire()
-        #     for k in gui_data_dict:
-        #         setattr(self, k, gui_data_dict[k])
-        #     self.gui_lock.release()
-        # except queue.Empty:
-        #     pass
 
         # put relevant data on queue -- have to be careful to make sure this doesn't slow down the env
         self.gui_lock.acquire()
@@ -524,19 +503,3 @@ class ThingRosEnv(gym.Env):
 
     def depth_cb(self, msg):
         pass
-
-
-class Talker():
-    # just the regular python ros tutorial node
-    def __init__(self):
-
-        print('Version info: ', sys.version_info)
-
-        pub = rospy.Publisher('chatter', String, queue_size=10)
-        rospy.init_node('talker', anonymous=True)
-        rate = rospy.Rate(10) # 10hz
-        while not rospy.is_shutdown():
-            hello_str = "hello world %s" % rospy.get_time()
-            rospy.loginfo(hello_str)
-            pub.publish(hello_str)
-            rate.sleep()
