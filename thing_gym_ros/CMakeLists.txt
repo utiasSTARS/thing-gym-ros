@@ -21,6 +21,8 @@ find_package(catkin REQUIRED COMPONENTS
  add_message_files(
    FILES
    KeyboardTrigger.msg
+   SModel_robot_input.msg
+   SModel_robot_output.msg
  )
 
 ## Generate services in the 'srv' folder

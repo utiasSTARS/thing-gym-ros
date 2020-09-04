@@ -1,13 +1,3 @@
-# built-ins
-import sys
-import os
-import copy
-import time
-# from multiprocessing import Lock
-from threading import Thread, Lock
-import queue
-from queue import Queue
-
 # ros
 import rospy
 from std_msgs.msg import String
@@ -21,16 +11,9 @@ from std_msgs.msg import Float64MultiArray, Bool
 
 # other
 import numpy as np
-from numpy.linalg import norm
-import gym
-from gym.utils import seeding
-from gym import spaces
-import pygame
-import yaml
 
 # local
 import ros_np_tools as rnt
-from thing_gym_ros_catkin.msg import KeyboardTrigger
 from thing_gym_ros.envs.thing_ros_generic import ThingRosEnv
 
 
@@ -43,8 +26,9 @@ class ThingRosMBEnv(ThingRosEnv):
         self.tf_odom_cam = rnt.tf_msg.TransformWithUpdate(self.tf_buffer, 'odom', 'camera_link')
         self.tf_base_cam = rnt.tf_msg.TransformWithUpdate(self.tf_buffer, 'base_link', 'camera_link')
 
-        # extra publishers
+        # traj publishers for resetting
         self.pub_base_traj = rospy.Publisher('goal_ridgeback', Path, queue_size=1)
+        self.pub_arm_traj = rospy.Publisher('goal_ur10', Path, queue_size=1)
 
         self._main_odom_base_mat = self.tf_odom_base.as_mat()
         self._main_odom_base_pos_eul = self.tf_odom_base.as_pos_eul()
@@ -81,21 +65,49 @@ class ThingRosMBEnv(ThingRosEnv):
             high=main_theta + self._base_theta_maximums[1],
             size=1
         )
-        b_x, b_y = self.gen_base_tf_from_theta_and_ws_center(theta)
+        des_theta = main_theta + theta
+        if self.sim:
+            b_x, b_y = self.gen_base_tf_from_theta_and_ws_center(des_theta, cam_forward_axis='x')
+        else:
+            b_x, b_y = self.gen_base_tf_from_theta_and_ws_center(des_theta, cam_forward_axis='z')
         noise = self._base_reset_noise
         (b_x, b_y) = np.array([b_x, b_y]).squeeze() + self.np_random.uniform(low=-noise, high=noise, size=2)
-        rb_z = theta + self.np_random.uniform(low=-noise, high=noise, size=1)
+        rb_z = des_theta + self.np_random.uniform(low=-noise, high=noise, size=1)
         pos_eul = [b_x, b_y, 0, 0, 0, rb_z]
         return rnt.tf_mat.pos_eul_to_mat(pos_eul)
 
+    def _publish_combined_arm_base_reset_path(self, reset_odom_base_mat):
+        reset_base_tool_tf_msg = rnt.tf_msg.mat_to_tf_msg(self._reset_base_tool_mat)
+        reset_odom_base_tf_msg = rnt.tf_msg.mat_to_tf_msg(reset_odom_base_mat)
 
-    def _publish_reset_base_path(self, reset_base_mat):
-        des_base_tf_msg = rnt.tf_msg.mat_to_tf_msg(reset_base_mat)
-        base_path = rnt.path.generate_smooth_path(self.tf_odom_base.transform, des_base_tf_msg,
-                                                  self._reset_base_vel_trans, self._reset_base_vel_rot,
-                                                  self._time_between_poses_tc)
-
+        # get number of traj points for arm and for base based on desired velocities, then
+        # generate smooth paths based on whichever has more points (so no velocity maximums are exceeded)
+        num_pts_arm = rnt.path.get_num_path_pts(
+            first_frame=self.tf_base_tool.transform, last_frame=reset_base_tool_tf_msg,
+            trans_velocity=self._reset_vel_trans, rot_velocity=self._reset_vel_rot,
+            time_btwn_poses=self._time_between_poses_tc)
+        num_pts_base = rnt.path.get_num_path_pts(
+            first_frame=self.tf_odom_base.transform, last_frame=reset_odom_base_tf_msg,
+            trans_velocity=self._reset_base_vel_trans, rot_velocity=self._reset_base_vel_rot,
+            time_btwn_poses=self._time_between_poses_tc)
+        if num_pts_arm > num_pts_base:
+            arm_path_base_ref = rnt.path.generate_smooth_path(
+                first_frame=self.tf_base_tool.transform, last_frame=reset_base_tool_tf_msg,
+                trans_velocity=self._reset_vel_trans, rot_velocity=self._reset_vel_rot,
+                time_btwn_poses=self._time_between_poses_tc)
+            base_path = rnt.path.generate_smooth_path(
+                first_frame=self.tf_odom_base.transform, last_frame=reset_odom_base_tf_msg, num_pts=num_pts_arm)
+        else:
+            arm_path_base_ref = rnt.path.generate_smooth_path(
+                first_frame=self.tf_base_tool.transform, last_frame=reset_base_tool_tf_msg, num_pts=num_pts_base)
+            base_path = rnt.path.generate_smooth_path(
+                first_frame=self.tf_odom_base.transform, last_frame=reset_odom_base_tf_msg,
+                trans_velocity=self._reset_base_vel_trans, rot_velocity=self._reset_base_vel_rot,
+                time_btwn_poses=self._time_between_poses_tc)
+        arm_path = rnt.path.get_new_bases_for_path(arm_path_base_ref, base_path)
         self.pub_base_traj.publish(base_path)
+        self.pub_arm_traj.publish(arm_path)
+        print("Reset trajectories for arm and base published.")
 
     def gen_base_tf_from_theta_and_ws_center(self, theta, cam_forward_axis='z'):
         """ Generate a base pose from a chosen value for theta while maintaining the

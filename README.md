@@ -9,6 +9,10 @@ The environments are tested with ROS Noetic and Ubuntu 20.04. Since ROS Noetic i
 ## Installation
 1. `thing_gym_ros` is technically a ROS package, but only to give the running code access to custom messages (and possibly services in the future). To ensure the thing environments have access to these custom components, this repository needs to be under a `src` folder in a catkin workspace (e.g. `~/catkin_ws/src`). Before you can use the environments here, you must call `catkin_make` and then `source devel/setup.bash`.
 
+2. *(optional)* To reduce unnecessary warning messages and allow gripper control, under your `catkin_ws/src` folder containing `thing-gym-ros`, you also need to clone:
+
+    a) the `warning-fix` branch of our [fork of geometry2](https://github.com/trevorablett/geometry2/tree/warning-fix).
+
 2. If you're using virtualenv/conda for python, you should be okay as long as the following considerations are met:
     - Your `PYTHONPATH` should contain `/opt/ros/ros_dist/lib/python3/dist-packages`, by default this is done when you call `source /opt/ros/ros_dist/setup.bash`, which should be in your `.bashrc` after installing ROS.
     - Some python packages (`PyKDL`, `cv2`) are not installed in `/opt/ros/...`, but rather `/usr/lib/python3/dist-packages`. To access these libraries in your virtual/conda env, you need to install them manually (since adding `/usr/lib/python3/dist-packages` to your `PYTHONPATH` is a doesn't work):

@@ -5,8 +5,8 @@
 #       are expected to change between each env should be actual class parameters.
 
 # resetting
-reset_base_tool_tf: [-0.226, .849, 1.071, .008, .006, .632]  # 3 for trans, 3 for rot as explained in README
-reset_joint_pos: [-1.38, -1.51, -1.88, -.38, 1.13, 2.89]     # 1 per joint, ensures consistent pose for above tf
+reset_base_tool_tf: [-0.226, 0.849, 1.071, 0.008, 0.006, 0.632]  # 3 for trans, 3 for rot as explained in README
+reset_joint_pos: [-1.38, -1.51, -1.88, -0.38, 1.13, 2.89]     # 1 per joint, ensures consistent pose for above tf
 
 # control
 control_type: 'delta_tool'    # 'delta_tool', 'delta_joint', 'pos_tool', 'pos_joint', 'vel_tool', 'vel_joint'
@@ -25,12 +25,20 @@ pos_limits: [-1., -1., -1., 1., 1., 1.]   # corners of a box relative to the rob
 # images
 img_width: 64
 img_height: 48
-img_zoom_crop: 2.0        # e.g. 2.0 cuts out half of height, half of width, only taking middle
+img_center_crop: 1.5        # e.g. 2.0 cuts out half of height, half of width, only taking middle
 alt_img_topic: null         # if different from default from kinect or sim kinect
 alt_depth_topic: null       # if different from default from kinect or sim kinect
+depth_max_dist: 5.0         # in meters, anything beyond this value is fixed to this value, and the actual depth
+                            # img is stored as 0 for 0m, and 1.0 for this value and higher
+require_img_depth_registration: True  # whether img and depth must be registered, since user creating cam nodes
+                                      # needs to take care of this themselves
+
+# numerical observations
+num_prev_pose: 5
+num_prev_grip: 2
 
 # base params (if moving_base is true -- otherwise ignored)
-base_theta_maximums: [-.4, .4]    # radians based on making a circle around the workspace center
+base_theta_maximums: [-0.4, 0.4]    # radians based on making a circle around the workspace center
 cam_workspace_distance: .8        # meters from cam frame to workspace center
 base_reset_noise: .02             # std in meters and radians for resets of base
 

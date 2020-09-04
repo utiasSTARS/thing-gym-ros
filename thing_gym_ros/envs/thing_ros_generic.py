@@ -3,14 +3,12 @@ import sys
 import os
 import copy
 import time
-# from multiprocessing import Lock
 from threading import Thread, Lock
 import queue
 from queue import Queue
 
 # ros
 import rospy
-from std_msgs.msg import String
 from geometry_msgs.msg import Transform, TransformStamped
 from sensor_msgs.msg import CompressedImage, Image
 from nav_msgs.msg import Path
@@ -18,6 +16,7 @@ import tf2_ros
 import tf.transformations as tf_trans
 import rostopic
 from std_msgs.msg import Float64MultiArray, Bool
+from cv_bridge import CvBridge, CvBridgeError
 
 # other
 import numpy as np
@@ -25,12 +24,14 @@ from numpy.linalg import norm
 import gym
 from gym.utils import seeding
 from gym import spaces
-import pygame
 import yaml
+import cv2
 
 # local
 import ros_np_tools as rnt
+import thing_gym_ros.envs.utils as thing_gym_ros_env_utils
 from thing_gym_ros_catkin.msg import KeyboardTrigger
+from thing_gym_ros_catkin.msg import SModel_robot_input, SModel_robot_output  # copied directly from Robotiq package
 
 
 class ThingRosEnv(gym.Env):
@@ -46,11 +47,9 @@ class ThingRosEnv(gym.Env):
                  default_grip_state,  # 'o' for open, 'c' for closed
                  num_objs,  # number of objects that can be interacted with
                  robot_config_file=None,  # yaml config file
-                 state_data=('pose', 'prev_pose', 'grip_pos', 'obj_pos', 'obj_rot'),
+                 state_data=('pose', 'prev_pose', 'grip_pos', 'prev_grip_pos', 'obj_pos', 'obj_rot'),
                  valid_act_t_dof=(1, 1, 1),
                  valid_act_r_dof=(1, 1, 1),
-                 num_prev_pos=5,
-                 gap_between_prev_pos=.1,  # in seconds
                  # moving_base=False,  # whether base moves to different views between episodes
                  max_real_time=5,  # in seconds
                  success_causes_done=False,
@@ -92,23 +91,24 @@ class ThingRosEnv(gym.Env):
         self.depth_in_state = depth_in_state
         self.image_width = self.cfg['img_width']
         self.image_height = self.cfg['img_height']
-        self.image_zoom_crop = self.cfg['img_zoom_crop']
+        self.image_center_crop = self.cfg['img_center_crop']
         self._control_freq = self.cfg['control_freq']
         self._max_episode_steps = max_real_time * self._control_freq
-        self.valid_act_t_dof = valid_act_t_dof
-        self.valid_act_r_dof = valid_act_r_dof
+        self.valid_act_t_dof = np.array(valid_act_t_dof)
+        self.valid_act_r_dof = np.array(valid_act_r_dof)
+        self.num_prev_pose = self.cfg['num_prev_pose']
+        self.num_prev_grip = self.cfg['num_prev_grip']
         self.pos_limits = self.cfg['pos_limits']
         self.arm_max_trans_vel = self.cfg['arm_max_trans_vel']
         self.arm_max_rot_vel = self.cfg['arm_max_rot_vel']
-        self._moving_base = False
+        self._moving_base = False  # overwritten by moving base child class
+        self._max_depth = self.cfg['depth_max_dist']
+        self._require_img_depth_registration = self.cfg['require_img_depth_registration']
         if self._rot_act_rep == 'quat':
             self._quat_in_action = True
             raise NotImplementedError('Implement if needed')
         else:
             self._quat_in_action = False
-
-        # varibles
-        self._timestep = 0
 
         # gym setup
         self._num_trans = sum(self.valid_act_t_dof)
@@ -120,7 +120,7 @@ class ThingRosEnv(gym.Env):
 
         self.action_space = spaces.Box(-1, 1, (self._valid_len,), dtype=np.float32)
         state_size = ('pose' in self.state_data) * 7 + \
-                     ('prev_pose' in self.state_data) * 7 * num_prev_pos + \
+                     ('prev_pose' in self.state_data) * 7 * self.num_prev_pose + \
                      ('grip pos' in self.state_data) * 2 + \
                      ('obj_pos' in self.state_data) * 3 * num_objs + \
                      ('obj_rot' in self.state_data) * 4 * num_objs + \
@@ -153,24 +153,6 @@ class ThingRosEnv(gym.Env):
         self.tf_base_tool = rnt.tf_msg.TransformWithUpdate(self.tf_buffer, 'base_link', 'thing_tool')
         self.tf_odom_tool = rnt.tf_msg.TransformWithUpdate(self.tf_buffer, 'odom', 'thing_tool')
 
-        # subscribers
-        if img_in_state:  # defaults are based on using a kinect
-            if self.cfg['alt_img_topic'] is None:
-                img_topic = '/camera/rgb/image_raw' if self.sim else '/camera/sd/image_color_rect'
-            else:
-                img_topic = self.cfg['alt_img_topic']
-            self.sub_img = rospy.Subscriber(img_topic, Image, self.img_cb)
-            self.img_lock = Lock()
-            self.latest_img = None
-        if depth_in_state:
-            if self.cfg['alt_depth_topic'] is None:
-                depth_topic = '/camera/depth/image_raw' if self.sim else '/camera/sd/image_depth_rect'
-            else:
-                depth_topic = self.cfg['depth_topic']
-            self.sub_depth = rospy.Subscriber(depth_topic, Image, self.depth_cb)
-            self.depth_lock = Lock()
-            self.latest_depth = None
-
         # publishers
         self.pub_servo = rospy.Publisher('/servo/command', Float64MultiArray, queue_size=1)
         self.pub_gripper = rospy.Publisher('FRL/remote_trigger', KeyboardTrigger, queue_size=10)
@@ -191,7 +173,7 @@ class ThingRosEnv(gym.Env):
 
 
         self._reset_joint_pos = np.array(self.cfg['reset_joint_pos'])
-        self._max_reset_trans = 1.0  # meters
+        self._max_reset_trans = 2.0  # meters
         self._max_reset_rot = 2.0  # radians
         self._reset_vel_trans = .15  # m/s
         self._reset_vel_rot = .5  # rad/s
@@ -200,33 +182,6 @@ class ThingRosEnv(gym.Env):
         self._reset_teleop_available = reset_teleop_available
         if reset_teleop_available:
             self.reset_teleop_complete = False
-
-        # base movement params
-        # if self._moving_base:
-        #     self.tf_odom_cam = rnt.tf_msg.TransformWithUpdate(self.tf_buffer, 'odom', 'camera_link')
-        #     self.tf_base_cam = rnt.tf_msg.TransformWithUpdate(self.tf_buffer, 'base_link', 'camera_link')
-        #     self._main_odom_base_mat = self.tf_odom_base.as_mat()
-        #     self._main_odom_base_pos_eul = self.tf_odom_base.as_pos_eul()
-        #     self._base_theta_maximums = self.cfg['base_theta_maximums']  # each in rads
-        #     self._cam_workspace_distance = self.cfg['cam_workspace_distance']
-        #     self._base_reset_noise = self.cfg['base_reset_noise']
-        #
-        #     # publish a tf that shows where the currently estimated workspace center is so that
-        #     # we can ensure we reset the base pose properly
-        #     self.tf_static_broadcaster = tf2_ros.StaticTransformBroadcaster()
-        #     self.tf_base_cam = rnt.tf_msg.TransformWithUpdate(self.tf_buffer, 'base_link', 'camera_link')
-        #     self.workspace_center_tf_msg = TransformStamped()
-        #     self.workspace_center_tf_msg.header.frame_id = 'odom'
-        #     self.workspace_center_tf_msg.child_frame_id = 'workspace_center'
-        #     T_update = np.eye(4)
-        #     if self.sim:
-        #         T_update[0, 3] = self._cam_workspace_distance
-        #     else:
-        #         T_update[2, 3] = self._cam_workspace_distance
-        #     T_workspace_center = self.tf_odom_cam.as_mat().dot(T_update)
-        #     self.workspace_center_tf_msg.transform = rnt.tf_msg.mat_to_tf_msg(T_workspace_center)
-        #     self.workspace_center_tf_msg.header.stamp = rospy.Time.now()
-        #     self.tf_static_broadcaster.sendTransform(self.workspace_center_tf_msg)
 
         # gui
         self.gui_thread = None
@@ -237,6 +192,39 @@ class ThingRosEnv(gym.Env):
         self.gui_lock = Lock()
         self.play_pause_env = True
         self.latest_processed_img = None
+
+        # other attributes
+        self.prev_pose = None
+        self.prev_grip_pos = None
+        self.cv_bridge = CvBridge()
+        self._timestep = 0
+        self._img_depth_registered = None
+        self.ep_odom_base_mat = self.tf_odom_base.as_mat()
+
+        # subscribers
+        if img_in_state:  # defaults are based on using a kinect
+            if self.cfg['alt_img_topic'] is None:
+                img_topic = '/camera/rgb/image_raw' if self.sim else '/camera/sd/image_color_rect'
+            else:
+                img_topic = self.cfg['alt_img_topic']
+            self.sub_img = rospy.Subscriber(img_topic, Image, self.img_cb)
+            self.img_lock = Lock()
+            self.latest_img = None
+            self._raw_img_height, self._raw_img_width = None, None
+        if depth_in_state:
+            if self.cfg['alt_depth_topic'] is None:
+                depth_topic = '/camera/depth/image_raw' if self.sim else '/camera/sd/image_depth_rect'
+            else:
+                depth_topic = self.cfg['depth_topic']
+            self.sub_depth = rospy.Subscriber(depth_topic, Image, self.depth_cb)
+            self.depth_lock = Lock()
+            self.latest_depth = None
+            self._raw_depth_height, self._raw_depth_width = None, None
+
+        if grip_in_action:
+            self.sub_grip = rospy.Subscriber('/SModelRobotInput', SModel_robot_input, self.grip_cb)
+            self.grip_lock = Lock()
+            self.latest_grip = None
 
     def set_max_episode_steps(self, n):
         self._max_episode_steps = n
@@ -309,7 +297,7 @@ class ThingRosEnv(gym.Env):
 
             # T_new, limit_reached = self._limit_action(T_new)  # TODO implement this
 
-            servo_msg = rnt.thing.get_servo_msg(mat=T_new, base_tf_msg=self.tf_odom_base.transform)
+            servo_msg = rnt.thing.get_servo_msg(mat=T_new, base_tf_msg=rnt.tf_msg.mat_to_tf_msg(self.ep_odom_base_mat))
 
         # process grip action
         if self.grip_in_action:
@@ -332,15 +320,14 @@ class ThingRosEnv(gym.Env):
         self.gui_lock.acquire()
 
         # get and process observation
-        obs = None
+        obs, full_obs_dict = self._prepare_obs()
 
         self.gui_lock.release()
         self.rate.sleep()
         self.gui_lock.acquire()
 
-
         # get reward
-        r = None
+        r = self._get_reward()
 
         # get done
         self._timestep += 1
@@ -353,6 +340,10 @@ class ThingRosEnv(gym.Env):
     def _limit_action(self, action):
         """ Limit the desired action based on pos and vel maximums. """
         #TODO
+
+    def _get_reward(self):
+        """ Should be overwritten by children. """
+        return 0.0
 
     def reset(self):
         """ Reset the environment to the beginning of an episode.
@@ -407,45 +398,125 @@ class ThingRosEnv(gym.Env):
         input("Ensure there is a linear, collision-free path between end-effector and initial pose,"
               "then press Enter to continue...")
         self.gui_lock.acquire()
-        print("Publishing arm reset movement.")
         self.tf_odom_tool.update()
         self.tf_odom_base.update()
+        self.tf_base_tool.update()
 
         if self._moving_base:
-            T_odom_base = self._get_reset_base_mat()
-            self._publish_reset_base_path(T_odom_base)
+            self.ep_odom_base_mat = self._get_reset_base_mat()
+            self._publish_combined_arm_base_reset_path(self.ep_odom_base_mat)
         else:
-            T_odom_base = self.tf_odom_base.as_mat()
-        T_des_odom_tool = T_odom_base.dot(self._reset_base_tool_mat)
-        arm_path = rnt.path.generate_smooth_path(
-            first_frame=self.tf_odom_tool.transform,
-            last_frame=rnt.tf_msg.mat_to_tf_msg(T_des_odom_tool),
-            trans_velocity=self._reset_vel_trans,
-            rot_velocity=self._reset_vel_rot,
-            time_btwn_poses=self._time_between_poses_tc)
+            des_T = self.tf_odom_base.as_mat().dot(rnt.tf_msg.mat_to_tf_msg(self._reset_base_tool_mat))
+            arm_path = rnt.path.generate_smooth_path(
+                first_frame=self.tf_odom_tool.transform,
+                last_frame=rnt.tf_msg.mat_to_tf_msg(des_T),
+                trans_velocity=self._reset_vel_trans, rot_velocity=self._reset_vel_rot,
+                time_btwn_poses=self._time_between_poses_tc)
 
-        self.pub_arm_traj.publish(arm_path)
-        print("Reset trajectory published.")
+            self.pub_arm_traj.publish(arm_path)
+            print("Reset trajectory published.")
 
         # called after moving ee to init pose and user can now manually set up env objects
         if not self._reset_teleop_available:
             self._reset_helper()
 
         # generate observation for return -- need published trajectories above to be completed
-        # todo continue here
-        obs = None
+        obs, _ = self._prepare_obs()
 
         # other resets
         self._timestep = 0
+        self.prev_pose = None
+        self.prev_grip_pos = None
 
         self.gui_lock.release()
 
         return obs
 
+    def _prepare_obs(self):
+        """ Order in returned state array: pose, prev_pose, grip_pos, prev_grip_pos, obj_pos, obj_rot"""
+        return_obs = dict()
+        return_arr = []
+
+        # state data
+        if self._poses_ref_frame == 'b':
+            self.tf_base_tool.update()
+            cur_pos_quat = self.tf_base_tool.as_pos_quat()
+        elif self._poses_ref_frame == 'w':
+            self.tf_odom_tool.update()
+            cur_pos_quat = self.tf_odom_tool.as_pos_quat()
+
+        # avoid quaternion values jumping
+        if cur_pos_quat[-1] < 0:
+            cur_pos_quat[3:] = -cur_pos_quat[3:]
+
+        # fix pose to correspond to valid dofs
+        cur_pose = cur_pos_quat[self.valid_act_t_dof.nonzero()]
+        if sum(self.valid_act_r_dof) > 0:
+            cur_pose = np.concatenate([cur_pose, cur_pos_quat[3:]])
+
+        if 'pose' in self.state_data:
+            return_obs['pose'] = cur_pose
+            return_arr.append(cur_pose)
+
+        if 'prev_pose' in self.state_data:
+            if self.prev_pose is None:
+                self.prev_pose = np.tile(cur_pose, (self.num_prev_pose + 1, 1))
+            self.prev_pose = np.roll(self.prev_pose, -1, axis=0)
+            self.prev_pose[-1] = cur_pose
+            return_obs['prev_pose'] = self.prev_pose[:-1].flatten()
+            return_arr.append(return_obs['prev_pose'])
+
+        if 'grip_pos' or 'prev_grip_pos' in self.state_data:
+            self.grip_lock.acquire()
+            grip_pos = self.latest_grip
+            self.grip_lock.release()
+            if 'grip_pos' in self.state_data:
+                return_obs['grip_pos'] = grip_pos
+                return_arr.append(grip_pos)
+            if 'prev_grip_pos' in self.state_data:
+                if self.prev_grip_pos is None:
+                    self.prev_grip_pos = np.tile(grip_pos, (self.num_prev_grip + 1, 1))
+                self.prev_grip_pos = np.roll(self.prev_grip_pos, -1, axis=0)
+                return_obs['prev_grip_pos'] = np.array(self.prev_grip_pos[:-1]).flatten()
+                return_arr.append(return_obs['prev_grip_pos'])
+
+        if 'obj_pos' in self.state_data:
+            raise NotImplementedError('Object positions not implemented, need to use ARtags or some other CV method.')
+        if 'obj_rot' in self.state_data:
+            raise NotImplementedError('Object positions not implemented, need to use ARtags or some other CV method.')
+        if 'obj_rot_z' in self.state_data:
+            raise NotImplementedError('Object positions not implemented, need to use ARtags or some other CV method.')
+
+        return_arr = []
+        for k in return_obs.keys():
+            return_arr.append(return_obs[k])
+        return_arr = np.concatenate(return_arr)
+
+        # img and depth -- convert return structure to dict if they are included
+        if self.img_in_state or self.depth_in_state:
+            return_arr = dict(obs=return_arr)
+
+        if self.img_in_state:
+            self.img_lock.acquire()
+        if self.depth_in_state:
+            self.depth_lock.acquire()
+        if self.img_in_state:
+            return_obs['img'] = self.latest_img
+            return_arr['img'] = self.latest_img
+        if self.depth_in_state:
+            return_obs['depth'] = self.latest_depth
+            return_arr['depth'] = self.latest_depth
+        if self.img_in_state:
+            self.img_lock.release()
+        if self.depth_in_state:
+            self.depth_lock.release()
+
+        return return_arr, return_obs
+
     def _get_reset_base_mat(self):
         raise NotImplementedError("Create a ThingRosMBEnv class to use a moving base.")
 
-    def _publish_reset_base_path(self, reset_base_mat):
+    def _publish_combined_arm_base_reset_path(self, reset_odom_base_mat):
         raise NotImplementedError("Create a ThingRosMBEnv class to use a moving base.")
 
     def set_reset_teleop_complete(self):
@@ -454,7 +525,7 @@ class ThingRosEnv(gym.Env):
     def _reset_helper(self):
         """ Called within reset, but to be overridden by child classes. This should somehow help the
         experimenter reset objects to a new random pose, possibly with instructions."""
-        raise NotImplementedError('_reset_helper should be implemented by child classes.')
+        print('Warning: _reset_helper should be implemented by child classes.')
 
     def render(self, mode='human'):
         if mode == 'human':
@@ -480,7 +551,10 @@ class ThingRosEnv(gym.Env):
         while(not rospy.is_shutdown()):
             gui_data_dict = self.gui_to_env_q.get()
             self.gui_lock.acquire()
-            if gui_data_dict == None:  # means time to close
+            if gui_data_dict == 'close':  # means time to close
+                print("Gui closed.")
+                self.gui_lock.release()
+                self.gui_send_timer.shutdown()
                 break
             for k in gui_data_dict:
                 setattr(self, k, gui_data_dict[k])
@@ -496,10 +570,71 @@ class ThingRosEnv(gym.Env):
         self.gui_lock.release()
 
     def img_cb(self, msg):
-        # todo check image processing time, if it's fast enough do it in here
-        # if self.env_to_gui_q is not None:
-        #     self.env_to_gui_q.put(dict(env_img=img))
-        pass
+        img = self.cv_bridge.imgmsg_to_cv2(msg)
+
+        if self._raw_img_width is None:
+            self._raw_img_width = img.shape[1]
+            self._raw_img_height = img.shape[0]
+
+        if not self.sim:
+            img_fixed = copy.deepcopy(img)
+            img_fixed[:, :, 0] = img[:, :, 2]
+            img_fixed[:, :, 2] = img[:, :, 0]
+            img = img_fixed
+
+        if self.image_center_crop != 1.0:
+            img_cropped = thing_gym_ros_env_utils.center_crop_img(img, self.image_center_crop)
+        else:
+            img_cropped = img
+
+        img_final = cv2.resize(img_cropped, (self.image_width, self.image_height))
+
+        if self.env_to_gui_q is not None:
+            self.env_to_gui_q.put(dict(env_img=img_final))
+
+        self.img_lock.acquire()
+        self.latest_img = img_final
+        self.img_lock.release()
 
     def depth_cb(self, msg):
-        pass
+        depth = self.cv_bridge.imgmsg_to_cv2(msg)
+        depth_fixed = copy.deepcopy(depth)
+
+        if self._raw_depth_width is None:
+            self._raw_depth_width = depth.shape[1]
+            self._raw_depth_height = depth.shape[0]
+        if self._img_depth_registered is None and self._require_img_depth_registration:
+            if self._raw_img_width is not None and self._raw_depth_width is not None:
+                assert self._raw_img_width == self._raw_depth_width and self._raw_img_height == self._raw_depth_height, \
+                    "Image dimensions do not match depth dimensions, ensure that they are registered."
+                self._img_depth_registered = True
+
+        # want to fix all depth values to be float32 from 0 to 1, 0 = closest, 1 = max_dist
+        if self.sim:
+            max_depth = self._max_depth
+        else:
+            max_depth = 1000 * self._max_depth
+        depth_fixed[np.isnan(depth)] = max_depth  # todo this should be interpolate instead
+        depth_fixed[depth_fixed > max_depth] = max_depth
+        depth_fixed = depth_fixed / max_depth
+
+        if self.image_center_crop != 1.0:
+            depth_cropped = thing_gym_ros_env_utils.center_crop_img(depth_fixed, self.image_center_crop)
+        else:
+            depth_cropped = depth_fixed
+
+        depth_final = cv2.resize(depth_cropped, (self.image_width, self.image_height)).astype('float32')
+
+        self.depth_lock.acquire()
+        self.latest_depth = depth_final
+        self.depth_lock.release()
+
+    def grip_cb(self, msg):
+        # msg is SModel_robot_input, or equivalently SModelRobotInput
+        # each pos is a uint8, so normalize to range of [-1, 1] instead
+        finger_a_pos = (msg.gPRA / 255 - .5) * 2
+        finger_b_pos = (msg.gPRB / 255 - .5) * 2
+        finger_c_pos = (msg.gPRC / 255 - .5) * 2
+        self.grip_lock.acquire()
+        self.latest_grip = np.array([finger_a_pos, finger_b_pos, finger_c_pos])
+        self.grip_lock.release()

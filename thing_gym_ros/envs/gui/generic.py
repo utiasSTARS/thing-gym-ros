@@ -28,6 +28,8 @@ MainWindowUI, MainWindowBase = uic.loadUiType(os.path.join(path, 'thing_ros_gene
 
 
 class ThingRosGenericGui(MainWindowBase, MainWindowUI):
+    img_ready_sig = QtCore.pyqtSignal(object)
+
     def __init__(self, env_to_gui_q, gui_to_env_q, env_obj: 'ThingRosEnv'):
         super().__init__()
         self.setupUi(self)
@@ -59,15 +61,16 @@ class ThingRosGenericGui(MainWindowBase, MainWindowUI):
         self.pub_arm_traj = rospy.Publisher('goal_ur10', Path, queue_size=1)
 
         # set initial values
-        self._main_odom_base_mat = env_obj._main_odom_base_mat
-        self._main_odom_base_pos_eul = env_obj._main_odom_base_pos_eul
-        self._reset_base_vel_trans = env_obj._reset_base_vel_trans
-        self._reset_base_vel_rot = env_obj._reset_base_vel_rot
+        self._moving_base = env_obj._moving_base
+        if self._moving_base:
+            self._main_odom_base_mat = env_obj._main_odom_base_mat
+            self._main_odom_base_pos_eul = env_obj._main_odom_base_pos_eul
+            self._reset_base_vel_trans = env_obj._reset_base_vel_trans
+            self._reset_base_vel_rot = env_obj._reset_base_vel_rot
+            self.workspace_center_tf_msg = env_obj.workspace_center_tf_msg
         self._time_between_poses_tc = env_obj._time_between_poses_tc
         self.cam_workspace_dist.setValue(env_obj._cam_workspace_distance)
         self.sim = env_obj.sim
-        if env_obj._moving_base:
-            self.workspace_center_tf_msg = env_obj.workspace_center_tf_msg
 
         # base buttons
         self.base_pose_mat_before_adjustment = None
@@ -91,6 +94,9 @@ class ThingRosGenericGui(MainWindowBase, MainWindowUI):
         # self.base_trans_vel.setValue(self.env_obj._reset_base_vel_trans)
         # self.base_rot_vel.setValue(self.env_obj._reset_base_vel_rot)
 
+        # images
+        self.img_ready_sig.connect(self.set_rgb_img)
+
         self.update_timer = QtCore.QTimer()
         self.update_timer.timeout.connect(self.gui_update)
         self.update_timer.start(100)
@@ -98,7 +104,9 @@ class ThingRosGenericGui(MainWindowBase, MainWindowUI):
     def gui_update(self):
         try:
             gui_data_dict = self.env_to_gui_q.get_nowait()
-            # odom_base_pos_quat = gui_data_dict['tf_odom_base_pos_quat']
+
+            if 'env_img' in gui_data_dict:
+                self.img_ready_sig.emit(gui_data_dict['env_img'])
 
         except queue.Empty:
             pass
@@ -218,6 +226,15 @@ class ThingRosGenericGui(MainWindowBase, MainWindowUI):
 
     def closeEvent(self, e):
         self.update_timer.stop()
-        self.gui_to_env_q.put(None)
+        self.gui_to_env_q.put('close')
+        print('Gui closing.')
 
         e.accept()
+
+    @QtCore.pyqtSlot(object)
+    def set_rgb_img(self, image):
+        height, width, channel = image.shape
+        bytes_per_line = 3 * width
+        q_img = QtGui.QImage(image, width, height, bytes_per_line, QtGui.QImage.Format_RGB888)
+        img = QtGui.QPixmap(q_img)
+        self.rgb_img_label.setPixmap(img)
