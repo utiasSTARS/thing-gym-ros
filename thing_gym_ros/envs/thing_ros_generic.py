@@ -241,6 +241,7 @@ class ThingRosEnv(gym.Env):
     def seed(self, seed=None):
         """ Seed for random numbers, for e.g. resetting the environment """
         self.np_random, seed = seeding.np_random(seed)
+        self.action_space.seed(seed)
         return [seed]
 
     def step(self, action):
@@ -259,11 +260,11 @@ class ThingRosEnv(gym.Env):
             if not self.play_pause_env:
                 self.gui_lock.release()
                 print("Env is paused, unpause using gui.")
+                self.gui_lock.acquire()
                 while not self.play_pause_env:
                     self.gui_lock.release()
                     rospy.sleep(.1)
                     self.gui_lock.acquire()
-                self.gui_lock.release()
             self.gui_lock.release()
 
         self.gui_lock.acquire()
@@ -288,7 +289,7 @@ class ThingRosEnv(gym.Env):
                 axis = np.array([1, 0, 0])
             else:
                 axis = rod_delta_rot / ang
-            T_delta_rot = tf_trans.rotation_matrix(ang, axis)
+            R_delta_rot = tf_trans.rotation_matrix(ang, axis)[:3, :3]
 
             # we want movement to happen starting from the current tool position, but using the axes of the
             # current ref frame
@@ -296,14 +297,20 @@ class ThingRosEnv(gym.Env):
 
             T_act_frame = copy.deepcopy(T_odom_tool)
             if self._poses_ref_frame == 'b':
-                T_base_tool = self.tf_base_tool.as_mat()
-                T_act_frame[:3, :3] = T_base_tool[:3, :3]
+                # T_base_tool = self.tf_base_tool.as_mat()
+                T_odom_base = self.tf_odom_base.as_mat()
+                T_act_frame[:3, :3] = T_odom_base[:3, :3]
                 R_ref_tool = self.tf_base_tool.as_mat()[:3, :3]
+                R_odom_ref = T_odom_base[:3, :3]
             elif self._poses_ref_frame == 'w':
                 T_act_frame[:3, :3] = np.eye(3)
                 R_ref_tool = T_odom_tool[:3, :3]
+                R_odom_ref = np.eye(3)
+            # change on pos is based on transforming from ee point but along ref axes
             T_new = T_act_frame.dot(T_delta_trans)
-            T_new[:3, :3] = T_delta_rot[:3, :3].dot(R_ref_tool)
+            # change in rot is based on modifying ref to tool rotation, based on ref rot, and then putting it
+            # in the odom frame
+            T_new[:3, :3] = R_odom_ref.dot(R_delta_rot.dot(R_ref_tool))
 
             # T_new, limit_reached = self._limit_action(T_new)  # TODO implement this
 
@@ -319,8 +326,6 @@ class ThingRosEnv(gym.Env):
             grip = self.default_grip_state
         g_msg = KeyboardTrigger()
         g_msg.label = grip
-
-        import ipdb; ipdb.set_trace()
 
         self.pub_servo.publish(servo_msg)
         self.pub_gripper.publish(g_msg)
@@ -345,6 +350,7 @@ class ThingRosEnv(gym.Env):
 
         info = None
 
+        self.gui_lock.release()
         return obs, r, done, info
 
     def _limit_action(self, action):
@@ -417,11 +423,27 @@ class ThingRosEnv(gym.Env):
         reset_timeout_republish_time = 10.0  # in case actionlib barfs
         reset_thresh_trans = .01
         reset_thresh_rot = .1
+        settle_time = 1.0
+        time_within_spec = 0.0
+        within_spec = False
+        within_spec_start = 0
         pub_start_time = time.time()
         dist_base_to_reset, rot_dist_base_to_reset = rnt.pos_quat_np.get_trans_rot_dist(
             self.tf_odom_base.as_pos_quat(), rnt.pos_quat_np.mat_to_pos_quat(self.ep_odom_base_mat))
-        while (dist_arm_to_init > reset_thresh_trans or rot_dist_arm_to_init > reset_thresh_rot or
-               dist_base_to_reset > reset_thresh_trans or rot_dist_base_to_reset > reset_thresh_rot):
+        # while (dist_arm_to_init > reset_thresh_trans or rot_dist_arm_to_init > reset_thresh_rot or
+        #        dist_base_to_reset > reset_thresh_trans or rot_dist_base_to_reset > reset_thresh_rot):
+        while time_within_spec < settle_time:
+            if (dist_arm_to_init > reset_thresh_trans and rot_dist_arm_to_init > reset_thresh_rot and
+               dist_base_to_reset > reset_thresh_trans and rot_dist_base_to_reset > reset_thresh_rot and
+                not within_spec):
+                within_spec = True
+                within_spec_start = time.time()
+            else:
+                within_spec = False
+            if within_spec:
+                time_within_spec = time.time() - within_spec_start
+            else:
+                time_within_spec = 0.0
             if time.time() - pub_start_time > reset_timeout_republish_time:
                 print("Republishing reset trajectories")
                 self._publish_reset_trajectories(new_base_reset_mat=False)
@@ -435,7 +457,7 @@ class ThingRosEnv(gym.Env):
                                                  rnt.pos_quat_np.mat_to_pos_quat(self._reset_base_tool_mat))
             dist_base_to_reset, rot_dist_base_to_reset = rnt.pos_quat_np.get_trans_rot_dist(
                 self.tf_odom_base.as_pos_quat(), rnt.pos_quat_np.mat_to_pos_quat(self.ep_odom_base_mat))
-            print('dists: ', dist_arm_to_init, rot_dist_arm_to_init, dist_base_to_reset, rot_dist_base_to_reset)
+            # print('dists: ', dist_arm_to_init, rot_dist_arm_to_init, dist_base_to_reset, rot_dist_base_to_reset)
         print("Reset trajectories completed.")
 
         # called after moving ee to init pose and user can now manually set up env objects
@@ -581,7 +603,7 @@ class ThingRosEnv(gym.Env):
                 print('gui thread started')
                 self.gui_get_data_thread = Thread(target=self._gui_data_worker)
                 self.gui_get_data_thread.start()
-                self.gui_send_timer = rospy.Timer(rospy.Duration.from_sec(.1), self.__gui_timer_handler)
+                # self.gui_send_timer = rospy.Timer(rospy.Duration.from_sec(.1), self.__gui_timer_handler)
 
     def gui_worker(self, env_to_gui_q, gui_to_env_q):
         from PyQt5 import QtGui, QtCore, uic, QtWidgets
@@ -598,14 +620,14 @@ class ThingRosEnv(gym.Env):
             if gui_data_dict == 'close':  # means time to close
                 print("Gui closed.")
                 self.gui_lock.release()
-                self.gui_send_timer.shutdown()
+                # self.gui_send_timer.shutdown()
                 break
             for k in gui_data_dict:
                 setattr(self, k, gui_data_dict[k])
             self.gui_lock.release()
 
     def __gui_timer_handler(self, e):
-
+        # TODO delete this, may not be necessary for anything
         # put relevant data on queue -- have to be careful to make sure this doesn't slow down the env
         self.gui_lock.acquire()
         self.env_to_gui_q.put(dict(

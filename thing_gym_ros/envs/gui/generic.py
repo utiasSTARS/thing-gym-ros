@@ -102,14 +102,18 @@ class ThingRosGenericGui(MainWindowBase, MainWindowUI):
         self.update_timer.start(100)
 
     def gui_update(self):
-        try:
-            gui_data_dict = self.env_to_gui_q.get_nowait()
+        # loop though q to only take latest data
+        q_empty = False
+        gui_data_dict = None
+        while not q_empty:
+            try:
+                gui_data_dict = self.env_to_gui_q.get_nowait()
 
+            except queue.Empty:
+                q_empty = True
+        if gui_data_dict is not None:
             if 'env_img' in gui_data_dict:
                 self.img_ready_sig.emit(gui_data_dict['env_img'])
-
-        except queue.Empty:
-            pass
 
         # update base pose
         self.tf_odom_base.update()
