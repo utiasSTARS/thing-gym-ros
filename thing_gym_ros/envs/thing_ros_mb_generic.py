@@ -76,7 +76,7 @@ class ThingRosMBEnv(ThingRosEnv):
         pos_eul = [b_x, b_y, 0, 0, 0, rb_z]
         return rnt.tf_mat.pos_eul_to_mat(pos_eul)
 
-    def _publish_combined_arm_base_reset_path(self, reset_odom_base_mat):
+    def _get_combined_arm_base_reset_paths(self, reset_odom_base_mat):
         reset_base_tool_tf_msg = rnt.tf_msg.mat_to_tf_msg(self._reset_base_tool_mat)
         reset_odom_base_tf_msg = rnt.tf_msg.mat_to_tf_msg(reset_odom_base_mat)
 
@@ -105,9 +105,7 @@ class ThingRosMBEnv(ThingRosEnv):
                 trans_velocity=self._reset_base_vel_trans, rot_velocity=self._reset_base_vel_rot,
                 time_btwn_poses=self._time_between_poses_tc)
         arm_path = rnt.path.get_new_bases_for_path(arm_path_base_ref, base_path)
-        self.pub_base_traj.publish(base_path)
-        self.pub_arm_traj.publish(arm_path)
-        print("Reset trajectories for arm and base published.")
+        return arm_path, base_path
 
     def gen_base_tf_from_theta_and_ws_center(self, theta, cam_forward_axis='z'):
         """ Generate a base pose from a chosen value for theta while maintaining the

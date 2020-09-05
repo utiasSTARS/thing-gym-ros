@@ -17,6 +17,8 @@ import tf.transformations as tf_trans
 import rostopic
 from std_msgs.msg import Float64MultiArray, Bool
 from cv_bridge import CvBridge, CvBridgeError
+import actionlib
+from control_msgs.msg import FollowJointTrajectoryAction, FollowJointTrajectoryActionFeedback
 
 # other
 import numpy as np
@@ -159,6 +161,13 @@ class ThingRosEnv(gym.Env):
         self.pub_base_traj = rospy.Publisher('goal_ridgeback', Path, queue_size=1)
         self.pub_arm_traj = rospy.Publisher('goal_ur10', Path, queue_size=1)
 
+        # follow joint trajectory clients for knowing when resets are done
+        # info here copied from thing_control.cc, so if it changes there, needs to change here too
+        # self.client_arm_traj = actionlib.SimpleActionClient(
+        #     'vel_based_pos_traj_controller/follow_joint_trajectory', FollowJointTrajectoryAction)
+        # self.client_base_traj = actionlib.SimpleActionClient(
+        #     '/cart/ridgeback_cartesian_controller/follow_joint_trajectory', FollowJointTrajectoryAction)
+
         # using both a fixed sleep and variable sleep to match env with and without processing time on obs
         self.rate = rospy.Rate(self._control_freq)
         assert self.cfg['max_policy_time'] < 1 / self._control_freq, "max_policy_time %.3f is not less than period " \
@@ -255,6 +264,7 @@ class ThingRosEnv(gym.Env):
                     rospy.sleep(.1)
                     self.gui_lock.acquire()
                 self.gui_lock.release()
+            self.gui_lock.release()
 
         self.gui_lock.acquire()
 
@@ -293,7 +303,7 @@ class ThingRosEnv(gym.Env):
                 T_act_frame[:3, :3] = np.eye(3)
                 R_ref_tool = T_odom_tool[:3, :3]
             T_new = T_act_frame.dot(T_delta_trans)
-            T_new[:3, :3] = T_delta_rot.dot(R_ref_tool)
+            T_new[:3, :3] = T_delta_rot[:3, :3].dot(R_ref_tool)
 
             # T_new, limit_reached = self._limit_action(T_new)  # TODO implement this
 
@@ -372,17 +382,18 @@ class ThingRosEnv(gym.Env):
 
         # first do safety checks to make sure movement isn't too dramatic
         self.tf_base_tool.update()
-        base_tool_mat = self.tf_base_tool.as_mat()
         base_tool_pos_quat = self.tf_base_tool.as_pos_quat()
-        dist_arm_to_init = norm(base_tool_pos_quat[:3] - self._reset_base_tool_mat[3, :3])
+        dist_arm_to_init, rot_dist_arm_to_init = rnt.pos_quat_np.get_trans_rot_dist(base_tool_pos_quat,
+                                                 rnt.pos_quat_np.mat_to_pos_quat(self._reset_base_tool_mat))
+        # dist_arm_to_init = norm(base_tool_pos_quat[:3] - self._reset_base_tool_mat[3, :3])
         if dist_arm_to_init > self._max_reset_trans:
             raise RuntimeError("EE is %.3fm from initial pose. Must be within %.3fm to reset." %
                                (dist_arm_to_init, self._max_reset_trans))
             # input("Move arm closer to initial pose and press Enter to continue...")
             # self.tf_base_tool.update()
             # dist_arm_to_init = norm(base_tool_pos_quat[:3] - self._reset_base_tool_mat[3, :3])
-        rot_dist_arm_to_init = np.arccos(
-            np.clip((np.trace(np.dot(base_tool_mat[:3, :3], self._reset_base_tool_mat[:3, :3].T)) - 1) / 2, -1.0, 1.0))
+        # rot_dist_arm_to_init = np.arccos(
+        #     np.clip((np.trace(np.dot(base_tool_mat[:3, :3], self._reset_base_tool_mat[:3, :3].T)) - 1) / 2, -1.0, 1.0))
         if rot_dist_arm_to_init > self._max_reset_rot:
             raise RuntimeError("EE is %.3frad from init pose. Must be within %.3frad." %
                                (rot_dist_arm_to_init, self._max_reset_rot))
@@ -393,28 +404,39 @@ class ThingRosEnv(gym.Env):
             #             1.0))
 
         # complete the movement -- thing_control takes all motions in the frame of odom
-        reset_thresh = .01
         self.gui_lock.release()
         input("Ensure there is a linear, collision-free path between end-effector and initial pose,"
               "then press Enter to continue...")
         self.gui_lock.acquire()
-        self.tf_odom_tool.update()
-        self.tf_odom_base.update()
-        self.tf_base_tool.update()
 
-        if self._moving_base:
-            self.ep_odom_base_mat = self._get_reset_base_mat()
-            self._publish_combined_arm_base_reset_path(self.ep_odom_base_mat)
-        else:
-            des_T = self.tf_odom_base.as_mat().dot(rnt.tf_msg.mat_to_tf_msg(self._reset_base_tool_mat))
-            arm_path = rnt.path.generate_smooth_path(
-                first_frame=self.tf_odom_tool.transform,
-                last_frame=rnt.tf_msg.mat_to_tf_msg(des_T),
-                trans_velocity=self._reset_vel_trans, rot_velocity=self._reset_vel_rot,
-                time_btwn_poses=self._time_between_poses_tc)
+        self._publish_reset_trajectories()
 
-            self.pub_arm_traj.publish(arm_path)
-            print("Reset trajectory published.")
+        # Need reset trajectories to completely finish before grabbing observation and returning
+        # action client is super buggy, so the right way to do this would be using the
+        # follow_joint_trajectory/result topics, but instead we'll just use a simple poll
+        reset_timeout_republish_time = 10.0  # in case actionlib barfs
+        reset_thresh_trans = .01
+        reset_thresh_rot = .1
+        pub_start_time = time.time()
+        dist_base_to_reset, rot_dist_base_to_reset = rnt.pos_quat_np.get_trans_rot_dist(
+            self.tf_odom_base.as_pos_quat(), rnt.pos_quat_np.mat_to_pos_quat(self.ep_odom_base_mat))
+        while (dist_arm_to_init > reset_thresh_trans or rot_dist_arm_to_init > reset_thresh_rot or
+               dist_base_to_reset > reset_thresh_trans or rot_dist_base_to_reset > reset_thresh_rot):
+            if time.time() - pub_start_time > reset_timeout_republish_time:
+                print("Republishing reset trajectories")
+                self._publish_reset_trajectories(new_base_reset_mat=False)
+                pub_start_time = time.time()
+            self.gui_lock.release()
+            rospy.sleep(0.2)
+            self.gui_lock.acquire()
+            self.tf_odom_base.update()
+            self.tf_base_tool.update()
+            dist_arm_to_init, rot_dist_arm_to_init = rnt.pos_quat_np.get_trans_rot_dist(self.tf_base_tool.as_pos_quat(),
+                                                 rnt.pos_quat_np.mat_to_pos_quat(self._reset_base_tool_mat))
+            dist_base_to_reset, rot_dist_base_to_reset = rnt.pos_quat_np.get_trans_rot_dist(
+                self.tf_odom_base.as_pos_quat(), rnt.pos_quat_np.mat_to_pos_quat(self.ep_odom_base_mat))
+            print('dists: ', dist_arm_to_init, rot_dist_arm_to_init, dist_base_to_reset, rot_dist_base_to_reset)
+        print("Reset trajectories completed.")
 
         # called after moving ee to init pose and user can now manually set up env objects
         if not self._reset_teleop_available:
@@ -431,6 +453,28 @@ class ThingRosEnv(gym.Env):
         self.gui_lock.release()
 
         return obs
+
+    def _publish_reset_trajectories(self, new_base_reset_mat=True):
+        self.tf_odom_tool.update()
+        self.tf_odom_base.update()
+        self.tf_base_tool.update()
+
+        if self._moving_base:
+            if new_base_reset_mat:
+                self.ep_odom_base_mat = self._get_reset_base_mat()
+            arm_path, base_path = self._get_combined_arm_base_reset_paths(self.ep_odom_base_mat)
+            self.pub_base_traj.publish(base_path)
+            print("Base reset trajectory published.")
+        else:
+            des_T = self.tf_odom_base.as_mat().dot(rnt.tf_msg.mat_to_tf_msg(self._reset_base_tool_mat))
+            arm_path = rnt.path.generate_smooth_path(
+                first_frame=self.tf_odom_tool.transform,
+                last_frame=rnt.tf_msg.mat_to_tf_msg(des_T),
+                trans_velocity=self._reset_vel_trans, rot_velocity=self._reset_vel_rot,
+                time_btwn_poses=self._time_between_poses_tc)
+
+        self.pub_arm_traj.publish(arm_path)
+        print("Arm reset trajectory published.")
 
     def _prepare_obs(self):
         """ Order in returned state array: pose, prev_pose, grip_pos, prev_grip_pos, obj_pos, obj_rot"""
@@ -516,7 +560,7 @@ class ThingRosEnv(gym.Env):
     def _get_reset_base_mat(self):
         raise NotImplementedError("Create a ThingRosMBEnv class to use a moving base.")
 
-    def _publish_combined_arm_base_reset_path(self, reset_odom_base_mat):
+    def _get_combined_arm_base_reset_paths(self, reset_odom_base_mat):
         raise NotImplementedError("Create a ThingRosMBEnv class to use a moving base.")
 
     def set_reset_teleop_complete(self):
