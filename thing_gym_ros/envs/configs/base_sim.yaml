@@ -17,10 +17,15 @@ arm_max_trans_vel: .15        # m/s, also value used for resets
 arm_max_rot_vel: .3           # rad/s, also used for resets
 max_policy_time: .07          # max expected time that a running policy would take -- this should be set as low as possible
                               # this also should include the max time to process images before they are returned
-                              # in step
+                              # in step -- finally, this must be lower than 1/control_freq
+
+# thing_control params
+servo_time_from_start: .05    # Time after publishing that controller should aim to be at new
+                              # position by. Lower --> faster, but jerkier."
+traj_time_between_points: .3  # Time between points in full trajectory for resetting.
 
 # physical constraints
-pos_limits: [-1., -1., -1., 1., 1., 1.]   # corners of a box relative to the robot base origin
+pos_limits: [-0.5, 0.2, .6, 0.5, 1.2, 1.3]   # corners of a box relative to the robot base origin
 
 # images
 img_width: 64

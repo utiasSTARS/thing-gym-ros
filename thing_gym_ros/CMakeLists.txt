@@ -23,6 +23,7 @@ find_package(catkin REQUIRED COMPONENTS
    KeyboardTrigger.msg
    SModel_robot_input.msg
    SModel_robot_output.msg
+   Marker.msg
  )
 
 ## Generate services in the 'srv' folder

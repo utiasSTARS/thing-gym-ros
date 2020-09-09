@@ -19,6 +19,8 @@ from std_msgs.msg import Float64MultiArray, Bool
 from cv_bridge import CvBridge, CvBridgeError
 import actionlib
 from control_msgs.msg import FollowJointTrajectoryAction, FollowJointTrajectoryActionFeedback
+import dynamic_reconfigure.client
+# from visualization_msgs.msg import Marker
 
 # other
 import numpy as np
@@ -34,6 +36,7 @@ import ros_np_tools as rnt
 import thing_gym_ros.envs.utils as thing_gym_ros_env_utils
 from thing_gym_ros_catkin.msg import KeyboardTrigger
 from thing_gym_ros_catkin.msg import SModel_robot_input, SModel_robot_output  # copied directly from Robotiq package
+from thing_gym_ros_catkin.msg import Marker  # need the indigo version to communicate with thing rviz
 
 
 class ThingRosEnv(gym.Env):
@@ -95,7 +98,7 @@ class ThingRosEnv(gym.Env):
         self.image_height = self.cfg['img_height']
         self.image_center_crop = self.cfg['img_center_crop']
         self._control_freq = self.cfg['control_freq']
-        self._max_episode_steps = max_real_time * self._control_freq
+        self._max_episode_steps = int(max_real_time * self._control_freq)
         self.valid_act_t_dof = np.array(valid_act_t_dof)
         self.valid_act_r_dof = np.array(valid_act_r_dof)
         self.num_prev_pose = self.cfg['num_prev_pose']
@@ -111,6 +114,26 @@ class ThingRosEnv(gym.Env):
             raise NotImplementedError('Implement if needed')
         else:
             self._quat_in_action = False
+
+        # marker in rviz for pos limits
+        self.pub_pos_limits = rospy.Publisher('pos_limits_marker', Marker, queue_size=1)
+        self.pos_limits_marker = Marker()
+        self.pos_limits_marker.header.frame_id = 'base_link'
+        self.pos_limits_marker.header.stamp = rospy.Time(0)
+        self.pos_limits_marker.ns = 'pos_limits'
+        self.pos_limits_marker.id = 0
+        self.pos_limits_marker.type = Marker.CUBE
+        self.pos_limits_marker.action = Marker.ADD
+        self.pos_limits_marker.pose.position.x = (self.pos_limits[0] + self.pos_limits[3]) / 2
+        self.pos_limits_marker.pose.position.y = (self.pos_limits[1] + self.pos_limits[4]) / 2
+        self.pos_limits_marker.pose.position.z = (self.pos_limits[2] + self.pos_limits[5]) / 2
+        self.pos_limits_marker.pose.orientation.w = 1.0  # xyz default to 0
+        self.pos_limits_marker.scale.x = np.abs(self.pos_limits[0] - self.pos_limits[3])
+        self.pos_limits_marker.scale.y = np.abs(self.pos_limits[1] - self.pos_limits[4])
+        self.pos_limits_marker.scale.z = np.abs(self.pos_limits[2] - self.pos_limits[5])
+        self.pos_limits_marker.color.g = 1.0
+        self.pos_limits_marker.color.a = .3
+        self.pos_limits_marker.lifetime = rospy.Duration()
 
         # gym setup
         self._num_trans = sum(self.valid_act_t_dof)
@@ -140,11 +163,13 @@ class ThingRosEnv(gym.Env):
         else:
             self.observation_space = state_space
 
-        # hard-coded parameters from thing_control -- time_from_start in servoCallback
-        # should be set to the same value as control freq, ideally, time_between_poses is used for full paths
-        # for e.g. resetting
-        self._action_duration = .1
-        self._time_between_poses_tc = .3
+        # parameters for thing_control
+        self.thing_control_dyn_rec_client = dynamic_reconfigure.client.Client('/thing_control')
+        self._action_duration = self.cfg['servo_time_from_start']
+        self._time_between_poses_tc = self.cfg['traj_time_between_points']
+        params_dict = {'servo_time_from_start': self.cfg['servo_time_from_start'],
+                       'traj_time_between_points': self.cfg['traj_time_between_points']}
+        self.thing_control_dyn_rec_client.update_configuration(params_dict)
 
         # tf listener
         self.tf_buffer = tf2_ros.Buffer()
@@ -235,6 +260,9 @@ class ThingRosEnv(gym.Env):
             self.grip_lock = Lock()
             self.latest_grip = None
 
+        rospy.sleep(1.0)  # allow publishers to get ready
+        self.pub_pos_limits.publish(self.pos_limits_marker)
+
     def set_max_episode_steps(self, n):
         self._max_episode_steps = n
 
@@ -312,7 +340,7 @@ class ThingRosEnv(gym.Env):
             # in the odom frame
             T_new[:3, :3] = R_odom_ref.dot(R_delta_rot.dot(R_ref_tool))
 
-            # T_new, limit_reached = self._limit_action(T_new)  # TODO implement this
+            T_new, limit_reached = self._limit_action(T_new)
 
             servo_msg = rnt.thing.get_servo_msg(mat=T_new, base_tf_msg=rnt.tf_msg.mat_to_tf_msg(self.ep_odom_base_mat))
 
@@ -355,7 +383,34 @@ class ThingRosEnv(gym.Env):
 
     def _limit_action(self, action):
         """ Limit the desired action based on pos and vel maximums. """
-        #TODO
+        limit_reached = False
+        self.tf_odom_base.update()
+        self.tf_base_tool.update()
+        self.tf_odom_tool.update()
+
+        if self._control_type == 'delta_tool':
+            T_des_odom_tool = action
+            if self._poses_ref_frame == 'b':
+                # assuming that pos limits are given relative to base
+                T_odom_base = self.tf_odom_base.as_mat()
+                T_base_odom = rnt.tf_mat.invert_transform(T_odom_base)
+                T_des_base_tool = T_base_odom.dot(T_des_odom_tool)
+                if np.any(T_des_base_tool[:3, 3] < self.pos_limits[:3]) or \
+                    np.any(T_des_base_tool[:3, 3] > self.pos_limits[3:]):
+                    limit_reached = True
+                T_des_base_tool[:3, 3] = np.clip(T_des_base_tool[:3, 3], self.pos_limits[:3], self.pos_limits[3:])
+                limited_action = T_odom_base.dot(T_des_base_tool)
+            elif self._poses_ref_frame == 'w':
+                # assuming pos limits given relative to odom
+                if np.any(T_des_base_tool[:3, 3] < self.pos_limits[:3]) or \
+                    np.any(T_des_base_tool[:3, 3] > self.pos_limits[3:]):
+                    limit_reached = True
+                limited_action = np.clip(T_des_odom_tool[:3, 3], self.pos_limits[:3], self.pos_limits[3:])
+
+        else:
+            raise NotImplementedError('No limits implemented for chosen control type.')
+
+        return limited_action, limit_reached
 
     def _get_reward(self):
         """ Should be overwritten by children. """
@@ -433,11 +488,11 @@ class ThingRosEnv(gym.Env):
         # while (dist_arm_to_init > reset_thresh_trans or rot_dist_arm_to_init > reset_thresh_rot or
         #        dist_base_to_reset > reset_thresh_trans or rot_dist_base_to_reset > reset_thresh_rot):
         while time_within_spec < settle_time:
-            if (dist_arm_to_init > reset_thresh_trans and rot_dist_arm_to_init > reset_thresh_rot and
-               dist_base_to_reset > reset_thresh_trans and rot_dist_base_to_reset > reset_thresh_rot and
-                not within_spec):
-                within_spec = True
-                within_spec_start = time.time()
+            if (dist_arm_to_init < reset_thresh_trans and rot_dist_arm_to_init < reset_thresh_rot and
+               dist_base_to_reset < reset_thresh_trans and rot_dist_base_to_reset < reset_thresh_rot):
+                if not within_spec:
+                    within_spec = True
+                    within_spec_start = time.time()
             else:
                 within_spec = False
             if within_spec:
@@ -445,7 +500,7 @@ class ThingRosEnv(gym.Env):
             else:
                 time_within_spec = 0.0
             if time.time() - pub_start_time > reset_timeout_republish_time:
-                print("Republishing reset trajectories")
+                print("Republishing reset trajectories (possible action client issue). ")
                 self._publish_reset_trajectories(new_base_reset_mat=False)
                 pub_start_time = time.time()
             self.gui_lock.release()
@@ -473,6 +528,8 @@ class ThingRosEnv(gym.Env):
         self.prev_grip_pos = None
 
         self.gui_lock.release()
+
+        self.pub_pos_limits.publish(self.pos_limits_marker)
 
         return obs
 
@@ -527,9 +584,9 @@ class ThingRosEnv(gym.Env):
         if 'prev_pose' in self.state_data:
             if self.prev_pose is None:
                 self.prev_pose = np.tile(cur_pose, (self.num_prev_pose + 1, 1))
-            self.prev_pose = np.roll(self.prev_pose, -1, axis=0)
-            self.prev_pose[-1] = cur_pose
-            return_obs['prev_pose'] = self.prev_pose[:-1].flatten()
+            self.prev_pose = np.roll(self.prev_pose, 1, axis=0)
+            self.prev_pose[0] = cur_pose
+            return_obs['prev_pose'] = self.prev_pose[1:].flatten()
             return_arr.append(return_obs['prev_pose'])
 
         if 'grip_pos' or 'prev_grip_pos' in self.state_data:
@@ -542,8 +599,9 @@ class ThingRosEnv(gym.Env):
             if 'prev_grip_pos' in self.state_data:
                 if self.prev_grip_pos is None:
                     self.prev_grip_pos = np.tile(grip_pos, (self.num_prev_grip + 1, 1))
-                self.prev_grip_pos = np.roll(self.prev_grip_pos, -1, axis=0)
-                return_obs['prev_grip_pos'] = np.array(self.prev_grip_pos[:-1]).flatten()
+                self.prev_grip_pos = np.roll(self.prev_grip_pos, 1, axis=0)
+                self.prev_grip_pos[0] = grip_pos
+                return_obs['prev_grip_pos'] = np.array(self.prev_grip_pos[1:]).flatten()
                 return_arr.append(return_obs['prev_grip_pos'])
 
         if 'obj_pos' in self.state_data:
@@ -698,9 +756,9 @@ class ThingRosEnv(gym.Env):
     def grip_cb(self, msg):
         # msg is SModel_robot_input, or equivalently SModelRobotInput
         # each pos is a uint8, so normalize to range of [-1, 1] instead
-        finger_a_pos = (msg.gPRA / 255 - .5) * 2
-        finger_b_pos = (msg.gPRB / 255 - .5) * 2
-        finger_c_pos = (msg.gPRC / 255 - .5) * 2
+        finger_a_pos = (msg.gPOA / 255 - .5) * 2
+        finger_b_pos = (msg.gPOB / 255 - .5) * 2
+        finger_c_pos = (msg.gPOC / 255 - .5) * 2
         self.grip_lock.acquire()
         self.latest_grip = np.array([finger_a_pos, finger_b_pos, finger_c_pos])
         self.grip_lock.release()
