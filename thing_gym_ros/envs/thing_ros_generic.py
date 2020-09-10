@@ -55,17 +55,15 @@ class ThingRosEnv(gym.Env):
                  state_data=('pose', 'prev_pose', 'grip_pos', 'prev_grip_pos', 'obj_pos', 'obj_rot'),
                  valid_act_t_dof=(1, 1, 1),
                  valid_act_r_dof=(1, 1, 1),
-                 # moving_base=False,  # whether base moves to different views between episodes
                  max_real_time=5,  # in seconds
                  success_causes_done=False,
                  failure_causes_done=False,
-                 reset_teleop_available=False
+                 reset_teleop_available=False,
+                 success_feedback_available=False
                  ):
         """
         Requires thing + related topics and action servers (either in sim or reality) to already be launched
         separately.
-
-        Quaternions for actions should be entered as XYZW to match ROS's formatting.
         """
 
         rospy.init_node('thing_gym')
@@ -94,6 +92,9 @@ class ThingRosEnv(gym.Env):
         self.state_data = state_data
         self.img_in_state = img_in_state
         self.depth_in_state = depth_in_state
+        self.success_causes_done = success_causes_done
+        self.failure_causes_done = failure_causes_done
+        self.dense_reward = dense_reward
         self.image_width = self.cfg['img_width']
         self.image_height = self.cfg['img_height']
         self.image_center_crop = self.cfg['img_center_crop']
@@ -186,13 +187,6 @@ class ThingRosEnv(gym.Env):
         self.pub_base_traj = rospy.Publisher('goal_ridgeback', Path, queue_size=1)
         self.pub_arm_traj = rospy.Publisher('goal_ur10', Path, queue_size=1)
 
-        # follow joint trajectory clients for knowing when resets are done
-        # info here copied from thing_control.cc, so if it changes there, needs to change here too
-        # self.client_arm_traj = actionlib.SimpleActionClient(
-        #     'vel_based_pos_traj_controller/follow_joint_trajectory', FollowJointTrajectoryAction)
-        # self.client_base_traj = actionlib.SimpleActionClient(
-        #     '/cart/ridgeback_cartesian_controller/follow_joint_trajectory', FollowJointTrajectoryAction)
-
         # using both a fixed sleep and variable sleep to match env with and without processing time on obs
         self.rate = rospy.Rate(self._control_freq)
         assert self.cfg['max_policy_time'] < 1 / self._control_freq, "max_policy_time %.3f is not less than period " \
@@ -216,6 +210,7 @@ class ThingRosEnv(gym.Env):
         self._reset_teleop_available = reset_teleop_available
         if reset_teleop_available:
             self.reset_teleop_complete = False
+        self._success_feedback_available = success_feedback_available
 
         # gui
         self.gui_thread = None
@@ -275,8 +270,8 @@ class ThingRosEnv(gym.Env):
     def step(self, action):
         """ If action space requires a quat, the quat does not have to be entered normalized to be valid.
 
-        Action should come in as (n,) shape array, where n includes number of translational DOF, +4 if any rotational
-        DOF (for quats), and +1 if gripper control is included. Gripper control is a float where anything below 0
+        Action should come in as (n,) shape array, where n includes number of translational DOF, rotational DOF,
+        and +1 if gripper control is included. Gripper control is a float where anything below 0
         is considered open, and anything above 0 is considered close.
         """
         assert len(action) == self._valid_len, 'action needs %d dimensions for this env, step called with %d' % \
@@ -376,7 +371,16 @@ class ThingRosEnv(gym.Env):
         self._timestep += 1
         done = self._timestep == self._max_episode_steps
 
-        info = None
+        # info includes information about success and failure
+        info = dict(done_success=False, done_failure=False)
+        if self._timestep == self._max_episode_steps:
+            if self._success_feedback_available:
+                self.gui_lock.release()
+                user_success_feedback = input("Waiting for user feedback on success: press s then enter for success, "
+                                              "or just enter for failure.")
+                self.gui_lock.acquire()
+                if user_success_feedback == 's':
+                    info['done_success'] = True
 
         self.gui_lock.release()
         return obs, r, done, info
@@ -526,6 +530,8 @@ class ThingRosEnv(gym.Env):
         self._timestep = 0
         self.prev_pose = None
         self.prev_grip_pos = None
+        if self._reset_teleop_available:
+            self.reset_teleop_complete = False
 
         self.gui_lock.release()
 

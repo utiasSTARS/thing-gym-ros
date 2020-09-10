@@ -6,7 +6,7 @@ import numpy as np
 
 from thing_gym_ros.envs.thing_ros_generic import ThingRosEnv
 from thing_gym_ros.envs.thing_ros_mb_generic import ThingRosMBEnv
-
+from thing_gym_ros.envs.reaching.visual import ThingRosReachAndGraspXYImageMB
 
 np.set_printoptions(suppress=True, precision=4)
 
@@ -20,9 +20,10 @@ all_obs = []
 all_act = []
 next_new_action = 0
 
-env = ThingRosMBEnv(img_in_state=True, depth_in_state=True, dense_reward=False, grip_in_action=True,
-                    default_grip_state='o', num_objs=1,
-                    state_data=('pose', 'grip_pos', 'prev_grip_pos'))
+# env = ThingRosMBEnv(img_in_state=True, depth_in_state=True, dense_reward=False, grip_in_action=True,
+#                     default_grip_state='o', num_objs=1,
+#                     state_data=('pose', 'grip_pos', 'prev_grip_pos'))
+env = ThingRosReachAndGraspXYImageMB(False, True)
 
 env.seed(0)
 env.render()
