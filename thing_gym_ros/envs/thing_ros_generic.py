@@ -226,7 +226,7 @@ class ThingRosEnv(gym.Env):
         self.prev_pose = None
         self.prev_grip_pos = None
         self.cv_bridge = CvBridge()
-        self._timestep = 0
+        self.ep_timesteps = 0
         self._img_depth_registered = None
         self.ep_odom_base_mat = self.tf_odom_base.as_mat()
 
@@ -368,12 +368,12 @@ class ThingRosEnv(gym.Env):
         r = self._get_reward()
 
         # get done
-        self._timestep += 1
-        done = self._timestep == self._max_episode_steps
+        self.ep_timesteps += 1
+        done = self.ep_timesteps == self._max_episode_steps
 
         # info includes information about success and failure
         info = dict(done_success=False, done_failure=False)
-        if self._timestep == self._max_episode_steps:
+        if self.ep_timesteps == self._max_episode_steps:
             if self._success_feedback_available:
                 self.gui_lock.release()
                 user_success_feedback = input("Waiting for user feedback on success: press s then enter for success, "
@@ -527,7 +527,7 @@ class ThingRosEnv(gym.Env):
         obs, _ = self._prepare_obs()
 
         # other resets
-        self._timestep = 0
+        self.ep_timesteps = 0
         self.prev_pose = None
         self.prev_grip_pos = None
         if self._reset_teleop_available:
@@ -659,7 +659,7 @@ class ThingRosEnv(gym.Env):
 
     def render(self, mode='human'):
         if mode == 'human':
-            if self.gui_thread is None:
+            if self.gui_thread is None:  # future calls to render don't do anything
                 self.gui_to_env_q = Queue()
                 self.env_to_gui_q = Queue()
                 self.gui_thread = Thread(target=self.gui_worker, args=(self.env_to_gui_q, self.gui_to_env_q))

@@ -15,7 +15,7 @@ The environments are tested with ROS Noetic and Ubuntu 20.04. Since ROS Noetic i
 
 2. If you're using virtualenv/conda for python, you should be okay as long as the following considerations are met:
     - Your `PYTHONPATH` should contain `/opt/ros/ros_dist/lib/python3/dist-packages`, by default this is done when you call `source /opt/ros/ros_dist/setup.bash`, which should be in your `.bashrc` after installing ROS.
-    - Some python packages (`PyKDL`, `cv2`) are not installed in `/opt/ros/...`, but rather `/usr/lib/python3/dist-packages`. To access these libraries in your virtual/conda env, you need to install them manually (since adding `/usr/lib/python3/dist-packages` to your `PYTHONPATH` is a doesn't work):
+    - Some python packages (`PyKDL`, `cv2`) are not installed in `/opt/ros/...`, but rather `/usr/lib/python3/dist-packages`. To access these libraries in your virtual/conda env, you need to install them manually (since adding `/usr/lib/python3/dist-packages` to your `PYTHONPATH` doesn't work):
         - *cv2*: `pip install cv2`
         - *PyKDL*: `pip install PyKDL` does NOT work, instead, install the custom wheel for your machine and python version from [here](https://rospypi.github.io/simple/pykdl/). Download the `.whl` file and install with `pip install`. Thanks to [@otamachan](https://github.com/otamachan) for setting this up.
 
@@ -33,14 +33,16 @@ The environments are tested with ROS Noetic and Ubuntu 20.04. Since ROS Noetic i
     ```
    **Real**: TODO
 
-2. In the catkin workspace where `thing-gym-ros` (the top-level folder of this repo) is contained, call `source devel/bash`.
+2. With your system ROS installation (not in the docker-env), call `catkin_make` in the directory containing `src/thing-gym-ros`.
 
-3. In your learning code, import whatever environments you want from this package, for example:
+3. In the same folder, call `source devel/bash`.
+
+4. In your learning code, import whatever environments you want from this package, for example:
     ```
-    from thing_gym_ros.envs import ThingRosReaching
+    from thing_gym_ros.envs.reaching.visual import ThingRosReachAndGraspXYImageMB
     ```
   
-4. Create an environment in your learning code and use it as you would any other gym env:
+5. Create an environment in your learning code and use it as you would any other gym env (ensuring you have completed step 3 in whatever environment you are calling this in):
     ```
     env = ThingRosReaching()
     obs = env.reset()
