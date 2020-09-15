@@ -229,6 +229,7 @@ class ThingRosEnv(gym.Env):
         self.ep_timesteps = 0
         self._img_depth_registered = None
         self.ep_odom_base_mat = self.tf_odom_base.as_mat()
+        self._env_reset_complete = False
 
         # subscribers
         if img_in_state:  # defaults are based on using a kinect
@@ -255,6 +256,9 @@ class ThingRosEnv(gym.Env):
             self.grip_lock = Lock()
             self.latest_grip = None
 
+        if 'grip_pos' in self.state_data or 'prev_grip_pos' in self.state_data:
+            assert grip_in_action, "Env created with grip_pos in state data but with grip_in_action set to False"
+
         rospy.sleep(1.0)  # allow publishers to get ready
         self.pub_pos_limits.publish(self.pos_limits_marker)
 
@@ -267,7 +271,7 @@ class ThingRosEnv(gym.Env):
         self.action_space.seed(seed)
         return [seed]
 
-    def step(self, action):
+    def step(self, action, reset_teleop_step=False):
         """ If action space requires a quat, the quat does not have to be entered normalized to be valid.
 
         Action should come in as (n,) shape array, where n includes number of translational DOF, rotational DOF,
@@ -276,6 +280,10 @@ class ThingRosEnv(gym.Env):
         """
         assert len(action) == self._valid_len, 'action needs %d dimensions for this env, step called with %d' % \
                                          (self._valid_len, len(action))
+
+        if not reset_teleop_step and not self._env_reset_complete:
+            raise RuntimeError("Call to reset did not complete, possibly because teleop is available and "
+                               "set_reset_teleop_complete was not called.")
 
         # gui handling
         if self.gui_thread is not None:
@@ -368,19 +376,23 @@ class ThingRosEnv(gym.Env):
         r = self._get_reward()
 
         # get done
-        self.ep_timesteps += 1
-        done = self.ep_timesteps == self._max_episode_steps
+        if not reset_teleop_step:
+            self.ep_timesteps += 1
+            done = self.ep_timesteps == self._max_episode_steps
 
-        # info includes information about success and failure
-        info = dict(done_success=False, done_failure=False)
-        if self.ep_timesteps == self._max_episode_steps:
-            if self._success_feedback_available:
-                self.gui_lock.release()
-                user_success_feedback = input("Waiting for user feedback on success: press s then enter for success, "
-                                              "or just enter for failure.")
-                self.gui_lock.acquire()
-                if user_success_feedback == 's':
-                    info['done_success'] = True
+            # info includes information about success and failure
+            info = dict(done_success=False, done_failure=False)
+            if self.ep_timesteps == self._max_episode_steps:
+                if self._success_feedback_available:
+                    self.gui_lock.release()
+                    user_success_feedback = input("Waiting for user feedback on success: press s then enter for success, "
+                                                  "or just enter for failure.")
+                    self.gui_lock.acquire()
+                    if user_success_feedback == 's':
+                        info['done_success'] = True
+        else:
+            done = False
+            info = {}
 
         self.gui_lock.release()
         return obs, r, done, info
@@ -427,6 +439,7 @@ class ThingRosEnv(gym.Env):
         primary use for this class is for the real robot, this method will require interaction with a person."""
 
         self.gui_lock.acquire()
+        self._env_reset_complete = False
 
         # For convenience, this allows a user to reset the environment using their teleop and move the EE
         # into an ideal pose to then be driven back to the initial pose.
@@ -469,10 +482,11 @@ class ThingRosEnv(gym.Env):
             #             1.0))
 
         # complete the movement -- thing_control takes all motions in the frame of odom
-        self.gui_lock.release()
-        input("Ensure there is a linear, collision-free path between end-effector and initial pose,"
-              "then press Enter to continue...")
-        self.gui_lock.acquire()
+        if not self._reset_teleop_available:
+            self.gui_lock.release()
+            input("Ensure there is a linear, collision-free path between end-effector and initial pose,"
+                  "then press Enter to continue...")
+            self.gui_lock.acquire()
 
         self._publish_reset_trajectories()
 
@@ -480,6 +494,7 @@ class ThingRosEnv(gym.Env):
         # action client is super buggy, so the right way to do this would be using the
         # follow_joint_trajectory/result topics, but instead we'll just use a simple poll
         reset_timeout_republish_time = 10.0  # in case actionlib barfs
+        reset_non_movement_republish_time = 2.5  # again, for actionlib errors
         reset_thresh_trans = .01
         reset_thresh_rot = .1
         settle_time = 1.0
@@ -489,9 +504,12 @@ class ThingRosEnv(gym.Env):
         pub_start_time = time.time()
         dist_base_to_reset, rot_dist_base_to_reset = rnt.pos_quat_np.get_trans_rot_dist(
             self.tf_odom_base.as_pos_quat(), rnt.pos_quat_np.mat_to_pos_quat(self.ep_odom_base_mat))
-        # while (dist_arm_to_init > reset_thresh_trans or rot_dist_arm_to_init > reset_thresh_rot or
-        #        dist_base_to_reset > reset_thresh_trans or rot_dist_base_to_reset > reset_thresh_rot):
+        init_dist_base_to_reset = dist_base_to_reset
+        init_rot_dist_base_to_reset = rot_dist_base_to_reset
+        init_dist_arm_to_init = dist_arm_to_init
+        init_rot_dist_arm_to_init = rot_dist_arm_to_init
         while time_within_spec < settle_time:
+            cur_time = time.time()
             if (dist_arm_to_init < reset_thresh_trans and rot_dist_arm_to_init < reset_thresh_rot and
                dist_base_to_reset < reset_thresh_trans and rot_dist_base_to_reset < reset_thresh_rot):
                 if not within_spec:
@@ -503,8 +521,16 @@ class ThingRosEnv(gym.Env):
                 time_within_spec = time.time() - within_spec_start
             else:
                 time_within_spec = 0.0
-            if time.time() - pub_start_time > reset_timeout_republish_time:
+            if cur_time - pub_start_time > reset_timeout_republish_time:
                 print("Republishing reset trajectories (possible action client issue). ")
+                self._publish_reset_trajectories(new_base_reset_mat=False)
+                pub_start_time = time.time()
+            if cur_time - pub_start_time > reset_non_movement_republish_time and \
+                (norm(init_dist_base_to_reset - dist_base_to_reset) < .01 and
+                 norm(init_rot_dist_base_to_reset - rot_dist_base_to_reset) < .01 and
+                 norm(init_dist_arm_to_init - dist_arm_to_init) < .01 and
+                 norm(init_rot_dist_arm_to_init - rot_dist_arm_to_init) < .01):
+                print("Reset trajectories not started, republishing (possible action client issue).")
                 self._publish_reset_trajectories(new_base_reset_mat=False)
                 pub_start_time = time.time()
             self.gui_lock.release()
@@ -534,8 +560,8 @@ class ThingRosEnv(gym.Env):
             self.reset_teleop_complete = False
 
         self.gui_lock.release()
-
         self.pub_pos_limits.publish(self.pos_limits_marker)
+        self._env_reset_complete = True
 
         return obs
 
@@ -547,6 +573,8 @@ class ThingRosEnv(gym.Env):
         if self._moving_base:
             if new_base_reset_mat:
                 self.ep_odom_base_mat = self._get_reset_base_mat()
+                if self.env_to_gui_q is not None:
+                    self.env_to_gui_q.put(dict(ep_odom_base_mat=self.ep_odom_base_mat))
             arm_path, base_path = self._get_combined_arm_base_reset_paths(self.ep_odom_base_mat)
             self.pub_base_traj.publish(base_path)
             print("Base reset trajectory published.")
@@ -595,7 +623,7 @@ class ThingRosEnv(gym.Env):
             return_obs['prev_pose'] = self.prev_pose[1:].flatten()
             return_arr.append(return_obs['prev_pose'])
 
-        if 'grip_pos' or 'prev_grip_pos' in self.state_data:
+        if 'grip_pos' in self.state_data or 'prev_grip_pos' in self.state_data:
             self.grip_lock.acquire()
             grip_pos = self.latest_grip
             self.grip_lock.release()

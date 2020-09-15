@@ -70,12 +70,13 @@ class ThingRosGenericGui(MainWindowBase, MainWindowUI):
             self._reset_base_vel_trans = env_obj._reset_base_vel_trans
             self._reset_base_vel_rot = env_obj._reset_base_vel_rot
             self.workspace_center_tf_msg = env_obj.workspace_center_tf_msg
+            self.ep_odom_base_mat = env_obj.ep_odom_base_mat
         self._time_between_poses_tc = env_obj._time_between_poses_tc
         self.cam_workspace_dist.setValue(env_obj._cam_workspace_distance)
         self.sim = env_obj.sim
 
         # base buttons
-        self.base_pose_mat_before_adjustment = None
+        self.T_main_base_before_adjustment = None
         self.move_to_main_base_pose.clicked.connect(self.handle_move_to_main_base_pose)
         self.move_to_prev_base_pose.clicked.connect(self.handle_move_to_prev_base_pose)
         self.main_base_to_current.clicked.connect(self.handle_main_base_to_current)
@@ -115,6 +116,9 @@ class ThingRosGenericGui(MainWindowBase, MainWindowUI):
                 gui_data_dict = self.env_to_gui_q.get_nowait()
                 if 'env_img' in gui_data_dict:
                     latest_img = gui_data_dict['env_img']
+                for k in gui_data_dict:
+                    if k != 'env_img':
+                        setattr(self, k, gui_data_dict[k])
 
             except queue.Empty:
                 q_empty = True
@@ -141,7 +145,7 @@ class ThingRosGenericGui(MainWindowBase, MainWindowUI):
             self.cam_workspace_dist.setEnabled(True)
             self.base_at_main_label.setText("YES")
             self.base_at_main_label.setStyleSheet("QLabel { background-color : green; }")
-            if self.base_pose_mat_before_adjustment is not None:
+            if self.T_main_base_before_adjustment is not None:
                 self.move_to_prev_base_pose.setEnabled(True)
         else:
             self.cam_workspace_dist.setEnabled(False)
@@ -171,7 +175,11 @@ class ThingRosGenericGui(MainWindowBase, MainWindowUI):
         self.tf_base_tool.update()
 
         if self.base_at_main_label.text() == 'NO':
-            self.base_pose_mat_before_adjustment = self.tf_odom_base.as_mat()
+            self.T_main_base_before_adjustment = \
+                rnt.tf_mat.invert_transform(self.tf_odom_base.as_mat()).dot(self._main_odom_base_mat)
+
+        self.ep_odom_base_mat = self._main_odom_base_mat
+        self.gui_to_env_q.put(dict(ep_odom_base_mat=self.ep_odom_base_mat))
 
         base_path = rnt.path.generate_smooth_path(
             first_frame=self.tf_odom_base.transform,
@@ -192,8 +200,10 @@ class ThingRosGenericGui(MainWindowBase, MainWindowUI):
         self.tf_odom_base.update()
         self.tf_base_tool.update()
 
-        T_prev_base_new_ref = self.tf_odom_base.as_mat().dot(self.base_pose_mat_before_adjustment)
+        T_prev_base_new_ref = self.tf_odom_base.as_mat().dot(self.T_main_base_before_adjustment)
         self.ep_odom_base_mat = T_prev_base_new_ref
+
+        self.gui_to_env_q.put(dict(ep_odom_base_mat=self.ep_odom_base_mat))
 
         base_path = rnt.path.generate_smooth_path(
             first_frame=self.tf_odom_base.transform,
@@ -207,16 +217,19 @@ class ThingRosGenericGui(MainWindowBase, MainWindowUI):
         self.pub_base_traj.publish(base_path)
 
     def handle_main_base_spin_boxes(self):
+        T_prev_base_ep = rnt.tf_mat.invert_transform(self.ep_odom_base_mat).dot(self._main_odom_base_mat)
         self._main_odom_base_pos_eul[0] = self.x_base_main_spin_box.value()
         self._main_odom_base_pos_eul[1] = self.y_base_main_spin_box.value()
         self._main_odom_base_pos_eul[5] = self.theta_base_main_spin_box.value()
         self._main_odom_base_mat = rnt.tf_mat.pos_eul_to_mat(self._main_odom_base_pos_eul)
+        self.ep_odom_base_mat = self._main_odom_base_mat.dot(T_prev_base_ep)
+
         self.handle_cam_workspace_dist()
         self.gui_to_env_q.put(dict(
             _main_odom_base_pos_eul=self._main_odom_base_pos_eul,
-            _main_odom_base_mat=self._main_odom_base_mat
+            _main_odom_base_mat=self._main_odom_base_mat,
+            ep_odom_base_mat=self.ep_odom_base_mat
         ))
-
 
     def handle_cam_workspace_dist(self):
         # self.tf_odom_cam.update()

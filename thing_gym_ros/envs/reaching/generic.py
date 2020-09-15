@@ -43,8 +43,12 @@ class ThingRosReachingGeneric(ThingRosEnv):
         if self.obj_needs_resetting:
             new_obj_pos = self.np_random.uniform([0, 0], self.obj_reset_box_size)
             new_obj_rot = self.np_random.uniform(0, 360)
-            input("New obj pos: [%.3f, %.3f], rot: %.0f. Press enter when finished resetting object." %
-                  (new_obj_pos[0], new_obj_pos[1], new_obj_rot))
+            print_str = "New obj pos: [%.3f, %.3f], rot: %.0f." % \
+                        (new_obj_pos[0], new_obj_pos[1], new_obj_rot)
+            if self._reset_teleop_available:
+                print(print_str + " Press controller reset button when finished resetting.")
+            else:
+                input(print_str + " Press enter when finished resetting.")
         else:
             pass
 
