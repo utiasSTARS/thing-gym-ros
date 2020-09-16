@@ -6,20 +6,22 @@ This package is designed to be combined with the [thing ROS package](https://git
 
 The environments are tested with ROS Noetic and Ubuntu 20.04. Since ROS Noetic is built with python3, you can directly call these gym envs from your learning code built on python3.
 
+## Dependencies
+- [ROS](http://wiki.ros.org/noetic/Installation)
+    - Currently only tested with Noetic on Ubuntu 20.04.
+- [ros-np-tools](https://github.com/utiasSTARS/ros-np-tools)
+
 ## Installation
 1. `thing_gym_ros` is technically a ROS package, but only to give the running code access to custom messages (and possibly services in the future). To ensure the thing environments have access to these custom components, this repository needs to be under a `src` folder in a catkin workspace (e.g. `~/catkin_ws/src`). Before you can use the environments here, you must call `catkin_make` and then `source devel/setup.bash`.
 
-2. *(optional)* To reduce unnecessary warning messages and allow gripper control, under your `catkin_ws/src` folder containing `thing-gym-ros`, you also need to clone:
+2. *(optional)* To reduce unnecessary warning messages, under your `catkin_ws/src` folder containing `thing-gym-ros`, you also need to clone the `warning-fix` branch of our [fork of geometry2](https://github.com/trevorablett/geometry2/tree/warning-fix).
 
-    a) the `warning-fix` branch of our [fork of geometry2](https://github.com/trevorablett/geometry2/tree/warning-fix).
-
-2. If you're using virtualenv/conda for python, you should be okay as long as the following considerations are met:
+3. *(optional)* If you're using virtualenv/conda for python, you should be okay as long as the following considerations are met:
     - Your `PYTHONPATH` should contain `/opt/ros/ros_dist/lib/python3/dist-packages`, by default this is done when you call `source /opt/ros/ros_dist/setup.bash`, which should be in your `.bashrc` after installing ROS.
-    - Some python packages (`PyKDL`, `cv2`) are not installed in `/opt/ros/...`, but rather `/usr/lib/python3/dist-packages`. To access these libraries in your virtual/conda env, you need to install them manually (since adding `/usr/lib/python3/dist-packages` to your `PYTHONPATH` doesn't work):
-        - *cv2*: `pip install cv2`
-        - *PyKDL*: `pip install PyKDL` does NOT work, instead, install the custom wheel for your machine and python version from [here](https://rospypi.github.io/simple/pykdl/). Download the `.whl` file and install with `pip install`. Thanks to [@otamachan](https://github.com/otamachan) for setting this up.
+    - Some python packages are not installed in `/opt/ros/...`, but rather `/usr/lib/python3/dist-packages`. To access these libraries in your virtual/conda env, you need to install them manually (since adding `/usr/lib/python3/dist-packages` to your `PYTHONPATH` doesn't work, nor should it). Most are installed automatically via the `setup.py` requirements, but unfortunately the version of `PyKDL` automatically installed via `pip` is the wrong one, so you must install a custom wheel as follows:
+        - Install the custom wheel for your machine and python version from [here](https://rospypi.github.io/simple/pykdl/). Download the `.whl` file and install with `pip install .`. Thanks to [@otamachan](https://github.com/otamachan) for setting this up.
 
-3. In your learning python environment, install the package with
+4. In your learning python environment, install the package with
     ```
     pip install -e .
     ```
@@ -44,7 +46,7 @@ The environments are tested with ROS Noetic and Ubuntu 20.04. Since ROS Noetic i
   
 5. Create an environment in your learning code and use it as you would any other gym env (ensuring you have completed step 3 in whatever environment you are calling this in):
     ```
-    env = ThingRosReaching()
+    env = ThingRosReachAndGraspXYImageMB()
     obs = env.reset()
     obs, rew, done, _ = env.step(env.action_space.sample())
     ```
