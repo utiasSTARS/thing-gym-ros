@@ -6,7 +6,7 @@
 
 # resetting
 reset_base_tool_tf: [-0.226, 0.849, 1.071, 0.008, 0.006, 0.632]  # 3 for trans, 3 for rot as explained in README
-reset_joint_pos: [-1.38, -1.51, -1.88, -0.38, 1.13, 2.89]     # 1 per joint, ensures consistent pose for above tf
+reset_joint_pos: [-1.38, -1.51, 1.88, -0.38, 1.13, 2.89]     # 1 per joint, ensures consistent pose for above tf
 
 # control
 control_type: 'delta_tool'    # 'delta_tool', 'delta_joint', 'pos_tool', 'pos_joint', 'vel_tool', 'vel_joint'

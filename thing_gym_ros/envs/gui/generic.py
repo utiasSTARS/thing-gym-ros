@@ -123,7 +123,7 @@ class ThingRosGenericGui(MainWindowBase, MainWindowUI):
             except queue.Empty:
                 q_empty = True
         if latest_img is not None:
-            self.img_ready_sig.emit(gui_data_dict['env_img'])
+            self.img_ready_sig.emit(latest_img)
 
         # update base pose
         self.tf_odom_base.update()

@@ -21,6 +21,7 @@ import actionlib
 from control_msgs.msg import FollowJointTrajectoryAction, FollowJointTrajectoryActionFeedback
 import dynamic_reconfigure.client
 # from visualization_msgs.msg import Marker
+from control_msgs.msg import JointTrajectoryControllerState
 
 # other
 import numpy as np
@@ -258,6 +259,11 @@ class ThingRosEnv(gym.Env):
 
         if 'grip_pos' in self.state_data or 'prev_grip_pos' in self.state_data:
             assert grip_in_action, "Env created with grip_pos in state data but with grip_in_action set to False"
+
+        # subscriber for joint states
+        self.arm_joint_states_sub = rospy.Subscriber('/vel_based_pos_traj_controller/state',
+                                                     JointTrajectoryControllerState, self.arm_joint_states_cb)
+        self.arm_joint_pos_lock = Lock()
 
         rospy.sleep(1.0)  # allow publishers to get ready
         self.pub_pos_limits.publish(self.pos_limits_marker)
@@ -545,6 +551,13 @@ class ThingRosEnv(gym.Env):
             # print('dists: ', dist_arm_to_init, rot_dist_arm_to_init, dist_base_to_reset, rot_dist_base_to_reset)
         print("Reset trajectories completed.")
 
+        # ensure arm joint position is what it's supposed to be
+        self.arm_joint_pos_lock.acquire()
+        joint_pos_dist = norm(self._reset_joint_pos - self.arm_joint_pos_latest)
+        self.arm_joint_pos_lock.release()
+        assert joint_pos_dist < .1, "Arm EE pos is right, but joint positions are wrong. Manually reset arm to" \
+                                    "joint pos %s." % self._reset_joint_pos
+
         # called after moving ee to init pose and user can now manually set up env objects
         if not self._reset_teleop_available:
             self._reset_helper()
@@ -796,3 +809,8 @@ class ThingRosEnv(gym.Env):
         self.grip_lock.acquire()
         self.latest_grip = np.array([finger_a_pos, finger_b_pos, finger_c_pos])
         self.grip_lock.release()
+
+    def arm_joint_states_cb(self, msg):
+        self.arm_joint_pos_lock.acquire()
+        self.arm_joint_pos_latest = np.around(np.array(msg.actual.positions), decimals=3)
+        self.arm_joint_pos_lock.release()
