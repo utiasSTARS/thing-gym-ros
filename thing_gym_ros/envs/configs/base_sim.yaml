@@ -37,6 +37,8 @@ depth_max_dist: 5.0         # in meters, anything beyond this value is fixed to 
                             # img is stored as 0 for 0m, and 1.0 for this value and higher
 require_img_depth_registration: True  # whether img and depth must be registered, since user creating cam nodes
                                       # needs to take care of this themselves
+cam_forward_axis: x         # forward axis of camera_link frame -- x for sim and realsense, z for kinect
+sensor: kinect           # realsense or kinect
 
 # numerical observations
 num_prev_pose: 5

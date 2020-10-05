@@ -111,6 +111,8 @@ class ThingRosEnv(gym.Env):
         self._moving_base = False  # overwritten by moving base child class
         self._max_depth = self.cfg['depth_max_dist']
         self._require_img_depth_registration = self.cfg['require_img_depth_registration']
+        self._sensor = self.cfg['sensor']
+        self._cam_forward_axis = self.cfg['cam_forward_axis']
         if self._rot_act_rep == 'quat':
             self._quat_in_action = True
             raise NotImplementedError('Implement if needed')
@@ -185,6 +187,7 @@ class ThingRosEnv(gym.Env):
         # publishers
         self.pub_servo = rospy.Publisher('/servo/command', Float64MultiArray, queue_size=1)
         self.pub_gripper = rospy.Publisher('FRL/remote_trigger', KeyboardTrigger, queue_size=10)
+        self.pub_gripper_raw = rospy.Publisher('/SModelRobotOutput', SModel_robot_output, queue_size=1)
         self.pub_base_traj = rospy.Publisher('goal_ridgeback', Path, queue_size=1)
         self.pub_arm_traj = rospy.Publisher('goal_ur10', Path, queue_size=1)
 
@@ -199,8 +202,6 @@ class ThingRosEnv(gym.Env):
         self._reset_base_tool_tf_arr = np.array(self.cfg['reset_base_tool_tf'])
         self._reset_base_tool_mat= tf_trans.euler_matrix(*self._reset_base_tool_tf_arr[3:])
         self._reset_base_tool_mat[:3, 3] = self._reset_base_tool_tf_arr[:3]
-
-
         self._reset_joint_pos = np.array(self.cfg['reset_joint_pos'])
         self._max_reset_trans = 2.0  # meters
         self._max_reset_rot = 2.0  # radians
@@ -246,7 +247,7 @@ class ThingRosEnv(gym.Env):
             if self.cfg['alt_depth_topic'] is None:
                 depth_topic = '/camera/depth/image_raw' if self.sim else '/camera/sd/image_depth_rect'
             else:
-                depth_topic = self.cfg['depth_topic']
+                depth_topic = self.cfg['alt_depth_topic']
             self.sub_depth = rospy.Subscriber(depth_topic, Image, self.depth_cb)
             self.depth_lock = Lock()
             self.latest_depth = None
@@ -267,6 +268,12 @@ class ThingRosEnv(gym.Env):
 
         rospy.sleep(1.0)  # allow publishers to get ready
         self.pub_pos_limits.publish(self.pos_limits_marker)
+
+        if self.grip_in_action:
+            rospy.set_param('/gripper_force', self.cfg['max_grip_force'])
+            # grip_force_msg = SModel_robot_output()
+            # grip_force_msg.rFRA = self.cfg['max_grip_force']
+            # self.pub_gripper.publish(grip_force_msg)
 
     def set_max_episode_steps(self, n):
         self._max_episode_steps = n
@@ -391,8 +398,13 @@ class ThingRosEnv(gym.Env):
             if self.ep_timesteps == self._max_episode_steps:
                 if self._success_feedback_available:
                     self.gui_lock.release()
-                    user_success_feedback = input("Waiting for user feedback on success: press s then enter for success, "
-                                                  "or just enter for failure.")
+                    if self._reset_teleop_available:
+                        print("Waiting for user feedback on success: press up success, down for fail. "
+                              "This must be taken care of in code handling teleop.")
+                        user_success_feedback = False
+                    else:
+                        user_success_feedback = input("Waiting for user feedback on success: press s then enter for success, "
+                                                      "or just enter for failure.")
                     self.gui_lock.acquire()
                     if user_success_feedback == 's':
                         info['done_success'] = True
@@ -558,6 +570,8 @@ class ThingRosEnv(gym.Env):
         assert joint_pos_dist < .1, "Arm EE pos is right, but joint positions are wrong. Manually reset arm to" \
                                     "joint pos %s." % self._reset_joint_pos
 
+        # TODO ensure gripper is in correct position
+
         # called after moving ee to init pose and user can now manually set up env objects
         if not self._reset_teleop_available:
             self._reset_helper()
@@ -589,18 +603,19 @@ class ThingRosEnv(gym.Env):
                 if self.env_to_gui_q is not None:
                     self.env_to_gui_q.put(dict(ep_odom_base_mat=self.ep_odom_base_mat))
             arm_path, base_path = self._get_combined_arm_base_reset_paths(self.ep_odom_base_mat)
-            self.pub_base_traj.publish(base_path)
-            print("Base reset trajectory published.")
         else:
-            des_T = self.tf_odom_base.as_mat().dot(rnt.tf_msg.mat_to_tf_msg(self._reset_base_tool_mat))
+            des_T = self.ep_odom_base_mat.dot(self._reset_base_tool_mat)
             arm_path = rnt.path.generate_smooth_path(
                 first_frame=self.tf_odom_tool.transform,
                 last_frame=rnt.tf_msg.mat_to_tf_msg(des_T),
                 trans_velocity=self._reset_vel_trans, rot_velocity=self._reset_vel_rot,
                 time_btwn_poses=self._time_between_poses_tc)
 
+            base_path = rnt.thing.gen_no_movement_base_path(arm_path, self.ep_odom_base_mat)
+
+        self.pub_base_traj.publish(base_path)
         self.pub_arm_traj.publish(arm_path)
-        print("Arm reset trajectory published.")
+        print("Arm & Base reset trajectory published.")
 
     def _prepare_obs(self):
         """ Order in returned state array: pose, prev_pose, grip_pos, prev_grip_pos, obj_pos, obj_rot"""
@@ -747,7 +762,7 @@ class ThingRosEnv(gym.Env):
             self._raw_img_width = img.shape[1]
             self._raw_img_height = img.shape[0]
 
-        if not self.sim:
+        if not self.sim and self._sensor == 'kinect':
             img_fixed = copy.deepcopy(img)
             img_fixed[:, :, 0] = img[:, :, 2]
             img_fixed[:, :, 2] = img[:, :, 0]

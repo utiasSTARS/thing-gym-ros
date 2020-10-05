@@ -10,6 +10,7 @@ The environments are tested with ROS Noetic and Ubuntu 20.04. Since ROS Noetic i
 - [ROS](http://wiki.ros.org/noetic/Installation)
     - Currently only tested with Noetic on Ubuntu 20.04.
 - [ros-np-tools](https://github.com/utiasSTARS/ros-np-tools)
+- [realsense-ros](https://github.com/IntelRealSense/realsense-ros)
 
 ## Installation
 1. `thing_gym_ros` is technically a ROS package, but only to give the running code access to custom messages (and possibly services in the future). To ensure the thing environments have access to these custom components, this repository needs to be under a `src` folder in a catkin workspace (e.g. `~/catkin_ws/src`). Before you can use the environments here, you must call `catkin_make` and then `source devel/setup.bash`.
@@ -18,8 +19,11 @@ The environments are tested with ROS Noetic and Ubuntu 20.04. Since ROS Noetic i
 
 3. *(optional)* If you're using virtualenv/conda for python, you should be okay as long as the following considerations are met:
     - Your `PYTHONPATH` should contain `/opt/ros/ros_dist/lib/python3/dist-packages`, by default this is done when you call `source /opt/ros/ros_dist/setup.bash`, which should be in your `.bashrc` after installing ROS.
-    - Some python packages are not installed in `/opt/ros/...`, but rather `/usr/lib/python3/dist-packages`. To access these libraries in your virtual/conda env, you need to install them manually (since adding `/usr/lib/python3/dist-packages` to your `PYTHONPATH` doesn't work, nor should it). Most are installed automatically via the `setup.py` requirements, but unfortunately the version of `PyKDL` automatically installed via `pip` is the wrong one, so you must install a custom wheel as follows:
-        - Install the custom wheel for your machine and python version from [here](https://rospypi.github.io/simple/pykdl/). Download the `.whl` file and install with `pip install .`. Thanks to [@otamachan](https://github.com/otamachan) for setting this up.
+    - Some python packages are not installed in `/opt/ros/...`, but rather `/usr/lib/python3/dist-packages`. To access these libraries in your virtual/conda env, you need to install them manually (since adding `/usr/lib/python3/dist-packages` to your `PYTHONPATH` doesn't work, nor should it). Most are installed automatically via the `setup.py` requirements, but unfortunately the version of `PyKDL` automatically installed via `pip` is the wrong one, so you must install a custom wheel by running:
+    
+        ```
+        pip install --extra-index-url https://rospypi.github.io/simple/_pre PyKDL 
+        ```
 
 4. In your learning python environment, install the package with
     ```
@@ -29,12 +33,38 @@ The environments are tested with ROS Noetic and Ubuntu 20.04. Since ROS Noetic i
 
 ## Usage
 
-1. **Sim**: (Probably in a docker image), bring up a thing simulation with a kinect:
+1. 
+    **Sim**: (Probably in a docker image), bring up a thing simulation with a kinect:
     ```
     roslaunch thing_gazebo thing_world.launch gui:=False kinect:=True
     ```
-   **Real**: TODO
-
+    **Real**:
+    
+    a) Turn on the Thing robot, plug into computer (probably Monolith), connect via ssh, and run
+    ```
+    source trevor_ws/devel/setup.bash
+    roslaunch thing_control ur10+FT+gripper_ros_control.launch
+    ```
+    Currently using `trevor_ws` which is on branch `feature/mobile-base-demo-collection` since it has diverged from the   master branch. See the [thing repository](https://github.com/utiasSTARS/thing) for more info.
+    
+    b) Plug realsense into computer (probably Monolith), and run (in another terminal)
+    ```
+    source REALSENSE_CATKIN_WS/devel/setup.bash
+    roslaunch realsense2_camera rs_aligned_depth.launch
+    ```
+   
+    c) *(optional for mobile base view-agnostic envs)* First calibrate the realsense to the UR10. See [instructions](https://github.com/utiasSTARS/thing/tree/feature/mobile-base-demo-collection/thing_utils). Then, **in your docker image with your thing installation**, run
+    ```
+    source THING_CATKIN_WS/devel/setup.bash
+    roslaunch thing_utils realsense_publish_calibration.launch
+    ```
+   
+   d) *(optional for viewing, though recommended for view-agnostic envs)* Launch rviz, **in your docker image**, with
+   ```
+   source THING_CATKIN_WS/devel/setup.bash
+   roslaunch thing_utils thing_gym_ros_rviz.launch
+   ```
+   
 2. With your system ROS installation (not in the docker-env), call `catkin_make` in the directory containing `src/thing-gym-ros`.
 
 3. In the same folder, call `source devel/bash`.

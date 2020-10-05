@@ -44,8 +44,10 @@ class ThingRosMBEnv(ThingRosEnv):
         self.workspace_center_tf_msg.header.frame_id = 'odom'
         self.workspace_center_tf_msg.child_frame_id = 'workspace_center'
         T_update = np.eye(4)
-        if self.sim:
+        if self._cam_forward_axis == 'x':
             T_update[0, 3] = self._cam_workspace_distance
+        elif self._cam_forward_axis == 'y':
+            T_update[1, 3] = self._cam_workspace_distance
         else:
             T_update[2, 3] = self._cam_workspace_distance
         T_workspace_center = self.tf_odom_cam.as_mat().dot(T_update)
@@ -66,10 +68,7 @@ class ThingRosMBEnv(ThingRosEnv):
             size=1
         )
         des_theta = main_theta + theta
-        if self.sim:
-            b_x, b_y = self.gen_base_tf_from_theta_and_ws_center(des_theta, cam_forward_axis='x')
-        else:
-            b_x, b_y = self.gen_base_tf_from_theta_and_ws_center(des_theta, cam_forward_axis='z')
+        b_x, b_y = self.gen_base_tf_from_theta_and_ws_center(des_theta, cam_forward_axis=self._cam_forward_axis)
         noise = self._base_reset_noise
         (b_x, b_y) = np.array([b_x, b_y]).squeeze() + self.np_random.uniform(low=-noise, high=noise, size=2)
         rb_z = des_theta + self.np_random.uniform(low=-noise, high=noise, size=1)

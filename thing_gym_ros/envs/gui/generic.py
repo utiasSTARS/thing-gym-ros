@@ -71,21 +71,22 @@ class ThingRosGenericGui(MainWindowBase, MainWindowUI):
             self._reset_base_vel_rot = env_obj._reset_base_vel_rot
             self.workspace_center_tf_msg = env_obj.workspace_center_tf_msg
             self.ep_odom_base_mat = env_obj.ep_odom_base_mat
+            self.cam_workspace_dist.setValue(env_obj._cam_workspace_distance)
         self._time_between_poses_tc = env_obj._time_between_poses_tc
-        self.cam_workspace_dist.setValue(env_obj._cam_workspace_distance)
         self.sim = env_obj.sim
 
         # base buttons
-        self.T_main_base_before_adjustment = None
-        self.move_to_main_base_pose.clicked.connect(self.handle_move_to_main_base_pose)
-        self.move_to_prev_base_pose.clicked.connect(self.handle_move_to_prev_base_pose)
-        self.main_base_to_current.clicked.connect(self.handle_main_base_to_current)
-        self.x_base_main_spin_box.setValue(self._main_odom_base_pos_eul[0])
-        self.y_base_main_spin_box.setValue(self._main_odom_base_pos_eul[1])
-        self.theta_base_main_spin_box.setValue(self._main_odom_base_pos_eul[5])
-        self.x_base_main_spin_box.valueChanged.connect(self.handle_main_base_spin_boxes)
-        self.y_base_main_spin_box.valueChanged.connect(self.handle_main_base_spin_boxes)
-        self.theta_base_main_spin_box.valueChanged.connect(self.handle_main_base_spin_boxes)
+        if self._moving_base:
+            self.T_main_base_before_adjustment = None
+            self.move_to_main_base_pose.clicked.connect(self.handle_move_to_main_base_pose)
+            self.move_to_prev_base_pose.clicked.connect(self.handle_move_to_prev_base_pose)
+            self.main_base_to_current.clicked.connect(self.handle_main_base_to_current)
+            self.x_base_main_spin_box.setValue(self._main_odom_base_pos_eul[0])
+            self.y_base_main_spin_box.setValue(self._main_odom_base_pos_eul[1])
+            self.theta_base_main_spin_box.setValue(self._main_odom_base_pos_eul[5])
+            self.x_base_main_spin_box.valueChanged.connect(self.handle_main_base_spin_boxes)
+            self.y_base_main_spin_box.valueChanged.connect(self.handle_main_base_spin_boxes)
+            self.theta_base_main_spin_box.valueChanged.connect(self.handle_main_base_spin_boxes)
 
         self.set_base_spinbox_status(False)
         self.set_base_adjustment_status(False)
@@ -139,19 +140,20 @@ class ThingRosGenericGui(MainWindowBase, MainWindowUI):
         else:
             self.set_base_spinbox_status(True)
             self.set_base_adjustment_status(True)
-        dist_base_to_init = norm(odom_base_pos_eul[:2] - self._main_odom_base_pos_eul[:2])
-        rot_dist_base_to_main = np.abs(odom_base_pos_eul[5] - self._main_odom_base_pos_eul[5])
-        if dist_base_to_init < 0.02 and rot_dist_base_to_main < 0.02 and not self.play_pause_env.isChecked():
-            self.cam_workspace_dist.setEnabled(True)
-            self.base_at_main_label.setText("YES")
-            self.base_at_main_label.setStyleSheet("QLabel { background-color : green; }")
-            if self.T_main_base_before_adjustment is not None:
-                self.move_to_prev_base_pose.setEnabled(True)
-        else:
-            self.cam_workspace_dist.setEnabled(False)
-            self.base_at_main_label.setText("NO")
-            self.base_at_main_label.setStyleSheet("QLabel { background-color : red; }")
-            self.move_to_prev_base_pose.setEnabled(False)
+        if self._moving_base:
+            dist_base_to_init = norm(odom_base_pos_eul[:2] - self._main_odom_base_pos_eul[:2])
+            rot_dist_base_to_main = np.abs(odom_base_pos_eul[5] - self._main_odom_base_pos_eul[5])
+            if dist_base_to_init < 0.02 and rot_dist_base_to_main < 0.02 and not self.play_pause_env.isChecked():
+                self.cam_workspace_dist.setEnabled(True)
+                self.base_at_main_label.setText("YES")
+                self.base_at_main_label.setStyleSheet("QLabel { background-color : green; }")
+                if self.T_main_base_before_adjustment is not None:
+                    self.move_to_prev_base_pose.setEnabled(True)
+            else:
+                self.cam_workspace_dist.setEnabled(False)
+                self.base_at_main_label.setText("NO")
+                self.base_at_main_label.setStyleSheet("QLabel { background-color : red; }")
+                self.move_to_prev_base_pose.setEnabled(False)
 
     def handle_play_pause_env(self, checked):
         if checked:
