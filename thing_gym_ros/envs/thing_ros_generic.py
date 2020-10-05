@@ -60,7 +60,8 @@ class ThingRosEnv(gym.Env):
                  success_causes_done=False,
                  failure_causes_done=False,
                  reset_teleop_available=False,
-                 success_feedback_available=False
+                 success_feedback_available=False,
+                 num_grip_fingers=3
                  ):
         """
         Requires thing + related topics and action servers (either in sim or reality) to already be launched
@@ -150,11 +151,13 @@ class ThingRosEnv(gym.Env):
         self.action_space = spaces.Box(-1, 1, (self._valid_len,), dtype=np.float32)
         state_size = ('pose' in self.state_data) * 7 + \
                      ('prev_pose' in self.state_data) * 7 * self.num_prev_pose + \
-                     ('grip pos' in self.state_data) * 2 + \
+                     ('grip_pos' in self.state_data) * num_grip_fingers + \
+                     ('prev_grip_pos' in self.state_data) * num_grip_fingers * self.num_prev_grip + \
                      ('obj_pos' in self.state_data) * 3 * num_objs + \
                      ('obj_rot' in self.state_data) * 4 * num_objs + \
                      ('obj_rot_z' in self.state_data or 'obj_rot_z_90' in self.state_data or
                       'obj_rot_z_180' in self.state_data) * 2 * num_objs
+
         state_space = spaces.Box(-np.inf, np.inf, (state_size,), dtype=np.float32)
         if img_in_state or depth_in_state:
             obs_space_dict = dict()
