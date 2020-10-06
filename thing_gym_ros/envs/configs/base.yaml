@@ -8,6 +8,10 @@
 # 1. ensure that depth values are what is expected
 # 1. set up launch for cameras plus thing gym
 # 3. drop the force applied by the gripper before stopping movement
+# POSSIBLE BUGS
+#     - full batch BC trains way faster than the 5 epochs that happen more frequently?
+#     - after triggering a correction, robot slightly changes position
+#     - 
 
 # resetting
 reset_base_tool_tf: [-0.02, 0.882, 0.814, -0.863, -0.036, 1.636]  # 3 for trans, 3 for rot as explained in README
@@ -22,7 +26,8 @@ arm_max_trans_vel: .15        # m/s, also value used for resets
 arm_max_rot_vel: .3           # rad/s, also used for resets
 max_policy_time: .07          # max expected time that a running policy would take -- this should be set as low as possible
                               # this also should include the max time to process images before they are returned
-                              # in step -- finally, this must be lower than 1/control_freq
+                              # in step AND the forward time for the failure predictor
+                              # -- finally, this must be lower than 1/control_freq
 max_grip_force: 0             # integer from 0-255, 0 is min, 255 is max, settings for rFRA of gripper
 
 # thing_control params

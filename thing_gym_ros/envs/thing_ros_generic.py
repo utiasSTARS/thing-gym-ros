@@ -260,6 +260,7 @@ class ThingRosEnv(gym.Env):
             self.sub_grip = rospy.Subscriber('/SModelRobotInput', SModel_robot_input, self.grip_cb)
             self.grip_lock = Lock()
             self.latest_grip = None
+            self.latest_grip_bool = None
 
         if 'grip_pos' in self.state_data or 'prev_grip_pos' in self.state_data:
             assert grip_in_action, "Env created with grip_pos in state data but with grip_in_action set to False"
@@ -826,9 +827,14 @@ class ThingRosEnv(gym.Env):
         finger_c_pos = (msg.gPOC / 255 - .5) * 2
         self.grip_lock.acquire()
         self.latest_grip = np.array([finger_a_pos, finger_b_pos, finger_c_pos])
+        self.latest_grip_bool = np.any(self.latest_grip > -.95)  # from real robot being fully open
         self.grip_lock.release()
 
     def arm_joint_states_cb(self, msg):
         self.arm_joint_pos_lock.acquire()
         self.arm_joint_pos_latest = np.around(np.array(msg.actual.positions), decimals=3)
         self.arm_joint_pos_lock.release()
+
+    def get_cur_base_tool_pose(self):
+        self.tf_base_tool.update()
+        return self.tf_base_tool.as_pos_quat()
