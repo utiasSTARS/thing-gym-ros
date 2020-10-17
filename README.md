@@ -19,7 +19,10 @@ The environments are tested with ROS Noetic and Ubuntu 20.04. Since ROS Noetic i
 3. *(optional)* If you're using virtualenv/conda for python, you should be okay as long as the following considerations are met:
     - Your `PYTHONPATH` should contain `/opt/ros/ros_dist/lib/python3/dist-packages`, by default this is done when you call `source /opt/ros/ros_dist/setup.bash`, which should be in your `.bashrc` after installing ROS.
     - Some python packages are not installed in `/opt/ros/...`, but rather `/usr/lib/python3/dist-packages`. To access these libraries in your virtual/conda env, you need to install them manually (since adding `/usr/lib/python3/dist-packages` to your `PYTHONPATH` doesn't work, nor should it). Most are installed automatically via the `setup.py` requirements, but unfortunately the version of `PyKDL` automatically installed via `pip` is the wrong one, so you must install a custom wheel as follows:
-        - Install the custom wheel for your machine and python version from [here](https://rospypi.github.io/simple/pykdl/). Download the `.whl` file and install with `pip install .`. Thanks to [@otamachan](https://github.com/otamachan) for setting this up.
+    ```
+    pip install --extra-index-url https://rospypi.github.io/simple/_pre PyKDL
+    ``` 
+    Thanks to [@otamachan](https://github.com/otamachan) for setting this up.
 
 4. In your learning python environment, install the package with
     ```
