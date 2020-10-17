@@ -10,6 +10,7 @@ The environments are tested with ROS Noetic and Ubuntu 20.04. Since ROS Noetic i
 - [ROS](http://wiki.ros.org/noetic/Installation)
     - Currently only tested with Noetic on Ubuntu 20.04.
 - [ros-np-tools](https://github.com/utiasSTARS/ros-np-tools)
+- [realsense-ros](https://github.com/IntelRealSense/realsense-ros)
 
 ## Installation
 1. `thing_gym_ros` is technically a ROS package, but only to give the running code access to custom messages (and possibly services in the future). To ensure the thing environments have access to these custom components, this repository needs to be under a `src` folder in a catkin workspace (e.g. `~/catkin_ws/src`). Before you can use the environments here, you must call `catkin_make` and then `source devel/setup.bash`.
@@ -32,12 +33,38 @@ The environments are tested with ROS Noetic and Ubuntu 20.04. Since ROS Noetic i
 
 ## Usage
 
-1. **Sim**: (Probably in a docker image), bring up a thing simulation with a kinect:
+1. 
+    **Sim**: (Probably in a docker image), bring up a thing simulation with a kinect:
     ```
     roslaunch thing_gazebo thing_world.launch gui:=False kinect:=True
     ```
-   **Real**: TODO
-
+    **Real**:
+    
+    a) Turn on the Thing robot, plug into computer (probably Monolith), connect via ssh, and run
+    ```
+    source trevor_ws/devel/setup.bash
+    roslaunch thing_control ur10+FT+gripper_ros_control.launch
+    ```
+    Currently using `trevor_ws` which is on branch `feature/mobile-base-demo-collection` since it has diverged from the   master branch. See the [thing repository](https://github.com/utiasSTARS/thing) for more info.
+    
+    b) Plug realsense into computer (probably Monolith), and run (in another terminal)
+    ```
+    source REALSENSE_CATKIN_WS/devel/setup.bash
+    roslaunch realsense2_camera rs_aligned_depth.launch
+    ```
+   
+    c) *(optional for mobile base view-agnostic envs)* First calibrate the realsense to the UR10. See [instructions](https://github.com/utiasSTARS/thing/tree/feature/mobile-base-demo-collection/thing_utils). Then, **in your docker image with your thing installation**, run
+    ```
+    source THING_CATKIN_WS/devel/setup.bash
+    roslaunch thing_utils realsense_publish_calibration.launch
+    ```
+   
+   d) *(optional for viewing, though recommended for view-agnostic envs)* Launch rviz, **in your docker image**, with
+   ```
+   source THING_CATKIN_WS/devel/setup.bash
+   roslaunch thing_utils thing_gym_ros_rviz.launch
+   ```
+   
 2. With your system ROS installation (not in the docker-env), call `catkin_make` in the directory containing `src/thing-gym-ros`.
 
 3. In the same folder, call `source devel/bash`.

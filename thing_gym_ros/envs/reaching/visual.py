@@ -2,8 +2,6 @@ from thing_gym_ros.envs.reaching.generic import ThingRosReachingGeneric
 from thing_gym_ros.envs.thing_ros_mb_generic import ThingRosMBEnv
 
 
-# TODO need to find good initial EE positions for real robot and store them in separate config files
-
 REACHING_IMAGE_DEFAULTS = dict(
     img_in_state=True,
     depth_in_state=True,
