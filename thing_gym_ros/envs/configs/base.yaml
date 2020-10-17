@@ -5,13 +5,14 @@
 #       are expected to change between each env should be actual class parameters.
 
 # TODO
+# 2. try multiview hard env (stack 1 or stack 2 or insert PLUS FT SENSORS)
+# IF THINGS DONT WORK
 # 1. ensure that depth values are what is expected
-# 1. set up launch for cameras plus thing gym
-# 3. drop the force applied by the gripper before stopping movement
 # POSSIBLE BUGS
-#     - full batch BC trains way faster than the 5 epochs that happen more frequently?
+#     - control gets very stuttery in stack env, could be that control loop is too slow OR that FT is causing
+#       jumping inputs??
 #     - after triggering a correction, robot slightly changes position
-#     - 
+#     -
 
 # resetting
 reset_base_tool_tf: [-0.02, 0.882, 0.814, -0.863, -0.036, 1.636]  # 3 for trans, 3 for rot as explained in README
@@ -20,11 +21,13 @@ reset_joint_pos: [-1.71, -1.2, 1.61, 4.44, -0.87, -2.1]     # 1 per joint, ensur
 # control
 control_type: 'delta_tool'    # 'delta_tool', 'delta_joint', 'pos_tool', 'pos_joint', 'vel_tool', 'vel_joint'
 rot_act_rep: 'rod'            # 'rod' for rodrigues, 'quat' for quaternion
-control_freq: 8               # in Hz
+#control_freq: 8               # in Hz
+control_freq: 10               # in Hz
 poses_ref_frame: 'b'          # 'b' or 'w' for base or world
 arm_max_trans_vel: .15        # m/s, also value used for resets
 arm_max_rot_vel: .3           # rad/s, also used for resets
-max_policy_time: .07          # max expected time that a running policy would take -- this should be set as low as possible
+#max_policy_time: .07          # max expected time that a running policy would take -- this should be set as low as possible
+max_policy_time: .04          # max expected time that a running policy would take -- this should be set as low as possible
                               # this also should include the max time to process images before they are returned
                               # in step AND the forward time for the failure predictor
                               # -- finally, this must be lower than 1/control_freq
@@ -36,7 +39,7 @@ servo_time_from_start: .15    # Time after publishing that controller should aim
 traj_time_between_points: .3  # Time between points in full trajectory for resetting.
 
 # physical constraints
-pos_limits: [-0.5, 0.5, .73, 0.5, 1.2, 1.3]   # corners of a box relative to the robot base origin [-x, -y, -z, x, y z]
+pos_limits: [-0.35, 0.6, .76, 0.35, 1.2, 1.2]   # corners of a box relative to the robot base origin [-x, -y, -z, x, y z]
 
 # images
 img_width: 64

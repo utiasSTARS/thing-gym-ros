@@ -44,12 +44,8 @@ class ThingRosMBEnv(ThingRosEnv):
         self.workspace_center_tf_msg.header.frame_id = 'odom'
         self.workspace_center_tf_msg.child_frame_id = 'workspace_center'
         T_update = np.eye(4)
-        if self._cam_forward_axis == 'x':
-            T_update[0, 3] = self._cam_workspace_distance
-        elif self._cam_forward_axis == 'y':
-            T_update[1, 3] = self._cam_workspace_distance
-        else:
-            T_update[2, 3] = self._cam_workspace_distance
+        update_axis_dict = dict(x=0, y=1, z=2)
+        T_update[update_axis_dict[self._cam_forward_axis], 3] = self._cam_workspace_distance
         T_workspace_center = self.tf_odom_cam.as_mat().dot(T_update)
         self.workspace_center_tf_msg.transform = rnt.tf_msg.mat_to_tf_msg(T_workspace_center)
         self.workspace_center_tf_msg.header.stamp = rospy.Time.now()

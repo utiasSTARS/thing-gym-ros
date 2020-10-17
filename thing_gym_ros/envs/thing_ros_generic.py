@@ -9,7 +9,7 @@ from queue import Queue
 
 # ros
 import rospy
-from geometry_msgs.msg import Transform, TransformStamped
+from geometry_msgs.msg import Transform, TransformStamped, WrenchStamped
 from sensor_msgs.msg import CompressedImage, Image
 from nav_msgs.msg import Path
 import tf2_ros
@@ -53,7 +53,8 @@ class ThingRosEnv(gym.Env):
                  default_grip_state,  # 'o' for open, 'c' for closed
                  num_objs,  # number of objects that can be interacted with
                  robot_config_file=None,  # yaml config file
-                 state_data=('pose', 'prev_pose', 'grip_pos', 'prev_grip_pos', 'obj_pos', 'obj_rot'),
+                 state_data=('pose', 'prev_pose', 'grip_pos', 'prev_grip_pos', 'obj_pos', 'obj_rot', 'force_torque',
+                             'timestep'),
                  valid_act_t_dof=(1, 1, 1),
                  valid_act_r_dof=(1, 1, 1),
                  max_real_time=5,  # in seconds
@@ -97,6 +98,7 @@ class ThingRosEnv(gym.Env):
         self.success_causes_done = success_causes_done
         self.failure_causes_done = failure_causes_done
         self.dense_reward = dense_reward
+        self.num_objs = num_objs
         self.image_width = self.cfg['img_width']
         self.image_height = self.cfg['img_height']
         self.image_center_crop = self.cfg['img_center_crop']
@@ -156,7 +158,9 @@ class ThingRosEnv(gym.Env):
                      ('obj_pos' in self.state_data) * 3 * num_objs + \
                      ('obj_rot' in self.state_data) * 4 * num_objs + \
                      ('obj_rot_z' in self.state_data or 'obj_rot_z_90' in self.state_data or
-                      'obj_rot_z_180' in self.state_data) * 2 * num_objs
+                      'obj_rot_z_180' in self.state_data) * 2 * num_objs + \
+                     ('force_torque' in self.state_data) * 6 + \
+                     ('timestep' in self.state_data)
 
         state_space = spaces.Box(-np.inf, np.inf, (state_size,), dtype=np.float32)
         if img_in_state or depth_in_state:
@@ -176,6 +180,7 @@ class ThingRosEnv(gym.Env):
         self._time_between_poses_tc = self.cfg['traj_time_between_points']
         params_dict = {'servo_time_from_start': self.cfg['servo_time_from_start'],
                        'traj_time_between_points': self.cfg['traj_time_between_points']}
+        print("Updating dynamic reconfigure parameters in thing_control")
         self.thing_control_dyn_rec_client.update_configuration(params_dict)
 
         # tf listener
@@ -255,6 +260,12 @@ class ThingRosEnv(gym.Env):
             self.depth_lock = Lock()
             self.latest_depth = None
             self._raw_depth_height, self._raw_depth_width = None, None
+
+        if 'force_torque' in self.state_data:
+            self.sub_ft = rospy.Subscriber('/robotiq_force_torque_wrench_zero', WrenchStamped, self.ft_cb)
+            self.pub_ft_zero = rospy.Publisher('/FT_sensor_bias_node/set_zero', Bool, queue_size=1)
+            self.ft_lock = Lock()
+            self.latest_ft = None
 
         if grip_in_action:
             self.sub_grip = rospy.Subscriber('/SModelRobotInput', SModel_robot_input, self.grip_cb)
@@ -515,7 +526,7 @@ class ThingRosEnv(gym.Env):
         # Need reset trajectories to completely finish before grabbing observation and returning
         # action client is super buggy, so the right way to do this would be using the
         # follow_joint_trajectory/result topics, but instead we'll just use a simple poll
-        reset_timeout_republish_time = 10.0  # in case actionlib barfs
+        reset_timeout_republish_time = 5.5  # in case actionlib barfs -- should be longer than thing_control wait time
         reset_non_movement_republish_time = 2.5  # again, for actionlib errors
         reset_thresh_trans = .01
         reset_thresh_rot = .1
@@ -579,6 +590,13 @@ class ThingRosEnv(gym.Env):
         # called after moving ee to init pose and user can now manually set up env objects
         if not self._reset_teleop_available:
             self._reset_helper()
+
+        # if force torque is in state, reset it back to zero
+        if 'force_torque' in self.state_data:
+            self.pub_ft_zero.publish(True)
+            self.gui_lock.release()
+            time.sleep(0.5)  # zero reset node needs half a second of still robot to collect data to average
+            self.gui_lock.acquire()
 
         # generate observation for return -- need published trajectories above to be completed
         obs, _ = self._prepare_obs()
@@ -669,6 +687,18 @@ class ThingRosEnv(gym.Env):
                 self.prev_grip_pos[0] = grip_pos
                 return_obs['prev_grip_pos'] = np.array(self.prev_grip_pos[1:]).flatten()
                 return_arr.append(return_obs['prev_grip_pos'])
+
+        if 'force_torque' in self.state_data:
+            self.ft_lock.acquire()
+            return_obs['force_torque'] = self.latest_ft
+            self.ft_lock.release()
+            return_arr.append(return_obs['force_torque'])
+
+        if 'timestep' in self.state_data:
+            # adjust range of timesteps to be between -1 and 1
+            adj_timestep = (self.ep_timesteps / self._max_episode_steps - .5) * 2
+            return_obs['timestep'] = adj_timestep
+            return_arr.append(adj_timestep)
 
         if 'obj_pos' in self.state_data:
             raise NotImplementedError('Object positions not implemented, need to use ARtags or some other CV method.')
@@ -829,6 +859,21 @@ class ThingRosEnv(gym.Env):
         self.latest_grip = np.array([finger_a_pos, finger_b_pos, finger_c_pos])
         self.latest_grip_bool = np.any(self.latest_grip > -.95)  # from real robot being fully open
         self.grip_lock.release()
+
+    def ft_cb(self, msg):
+        # to make data more friendly for learning, going to "normalize" it to be approximately within -1, 1
+        # "a lot" of force is 50N, "a lot" of torque is 10, anything below 2.5N or .5Nm is considered noise, so cut off
+        fo = msg.wrench.force
+        to = msg.wrench.torque
+        fo = np.array([fo.x, fo.y, fo.z])
+        to = np.array([to.x, to.y, to.z])
+        fo[np.abs(fo) < 2.5] = 0
+        to[np.abs(to) < .1] = 0
+        force_fixed = fo / 50
+        torque_fixed = to / 10
+        self.ft_lock.acquire()
+        self.latest_ft = np.concatenate([force_fixed, torque_fixed])
+        self.ft_lock.release()
 
     def arm_joint_states_cb(self, msg):
         self.arm_joint_pos_lock.acquire()

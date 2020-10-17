@@ -72,6 +72,7 @@ class ThingRosGenericGui(MainWindowBase, MainWindowUI):
             self.workspace_center_tf_msg = env_obj.workspace_center_tf_msg
             self.ep_odom_base_mat = env_obj.ep_odom_base_mat
             self.cam_workspace_dist.setValue(env_obj._cam_workspace_distance)
+            self._cam_forward_axis = env_obj._cam_forward_axis
         self._time_between_poses_tc = env_obj._time_between_poses_tc
         self.sim = env_obj.sim
 
@@ -237,10 +238,9 @@ class ThingRosGenericGui(MainWindowBase, MainWindowUI):
         # self.tf_odom_cam.update()
 
         T_update = np.eye(4)
-        if self.sim:
-            T_update[0, 3] = self.cam_workspace_dist.value()
-        else:
-            T_update[2, 3] = self.cam_workspace_dist.value()
+
+        update_axis_dict = dict(x=0, y=1, z=2)
+        T_update[update_axis_dict[self._cam_forward_axis], 3] = self.cam_workspace_dist.value()
         # T_workspace_center = self.tf_odom_cam.as_mat().dot(T_update)
 
         T_workspace_center = self._main_odom_base_mat.dot(self._base_cam_mat).dot(T_update)
