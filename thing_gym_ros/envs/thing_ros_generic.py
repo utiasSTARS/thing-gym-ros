@@ -103,6 +103,7 @@ class ThingRosEnv(gym.Env):
         self.image_height = self.cfg['img_height']
         self.image_center_crop = self.cfg['img_center_crop']
         self._control_freq = self.cfg['control_freq']
+        self.action_lpf_beta = self.cfg['action_lpf_beta']
         self._max_episode_steps = int(max_real_time * self._control_freq)
         self.valid_act_t_dof = np.array(valid_act_t_dof)
         self.valid_act_r_dof = np.array(valid_act_r_dof)
@@ -233,6 +234,7 @@ class ThingRosEnv(gym.Env):
         self.latest_processed_img = None
 
         # other attributes
+        self.prev_action = None
         self.prev_pose = None
         self.prev_grip_pos = None
         self.cv_bridge = CvBridge()
@@ -312,6 +314,9 @@ class ThingRosEnv(gym.Env):
         if not reset_teleop_step and not self._env_reset_complete:
             raise RuntimeError("Call to reset did not complete, possibly because teleop is available and "
                                "set_reset_teleop_complete was not called.")
+
+        if self.action_lpf_beta < 1 and self.prev_action is not None:
+            action = self.action_lpf_beta * action + (1 - self.action_lpf_beta) * self.prev_action
 
         # gui handling
         if self.gui_thread is not None:
@@ -427,6 +432,7 @@ class ThingRosEnv(gym.Env):
             done = False
             info = {}
 
+        self.prev_action = action
         self.gui_lock.release()
         return obs, r, done, info
 
@@ -603,6 +609,7 @@ class ThingRosEnv(gym.Env):
 
         # other resets
         self.ep_timesteps = 0
+        self.prev_action = None
         self.prev_pose = None
         self.prev_grip_pos = None
         if self._reset_teleop_available:
