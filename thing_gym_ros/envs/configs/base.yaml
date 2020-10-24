@@ -32,13 +32,13 @@ max_policy_time: .04          # max expected time that a running policy would ta
                               # in step AND the forward time for the failure predictor
                               # -- finally, this must be lower than 1/control_freq
 max_grip_force: 0             # integer from 0-255, 0 is min, 255 is max, settings for rFRA of gripper
-action_lpf_beta: .9           # low pass filter for action, 1 is no effect, closer to 0 is large effect
+action_lpf_beta: 1.0           # low pass filter for action, 1 is no effect, closer to 0 is large effect
                               # this should be as high as possible since otherwise the environment becomes
                               # highly non-stationary
 
 # thing_control params
-servo_time_from_start: .15    # Time after publishing that controller should aim to be at new
-                              # position by. Lower --> faster, but jerkier."
+servo_time_from_start: .3    # Time after publishing that controller should aim to be at new
+                              # position by. Lower --> faster, but jerkier. -- originally set to .15, .3 acts as an lpf
 traj_time_between_points: .3  # Time between points in full trajectory for resetting.
 
 # physical constraints

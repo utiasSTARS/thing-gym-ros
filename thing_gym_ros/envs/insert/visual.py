@@ -1,59 +1,54 @@
-from thing_gym_ros.envs.stack.generic import ThingRosStackGeneric
+from thing_gym_ros.envs.thing_ros_generic import XYZ_DEFAULTS, SIXDOF_DEFAULTS
+from thing_gym_ros.envs.insert.generic import ThingRosInsertGeneric
 from thing_gym_ros.envs.thing_ros_mb_generic import ThingRosMBEnv
 
 
-STACK_IMAGE_DEFAULTS = dict(
+INSERT_IMAGE_DEFAULTS = dict(
     img_in_state=True,
     depth_in_state=True,
     dense_reward=False,
-    num_objs=2,
+    num_objs=1,
     state_data=('pose', 'grip_pos', 'prev_grip_pos', 'force_torque', 'timestep'),
     max_real_time=10,
-    grip_in_action=True
+    grip_in_action=False,
+    default_grip_state='c'
 )
 
-STACK3_IMAGE_DEFAULTS = dict(**STACK_IMAGE_DEFAULTS)
-STACK3_IMAGE_DEFAULTS['max_real_time'] = 20
-STACK3_IMAGE_DEFAULTS['num_objs'] = 3
+PICK_AND_INSERT_IMAGE_DEFAULTS = dict(**INSERT_IMAGE_DEFAULTS)
+PICK_AND_INSERT_IMAGE_DEFAULTS['grip_in_action'] = True
+PICK_AND_INSERT_IMAGE_DEFAULTS['max_real_time'] = 15
+PICK_AND_INSERT_IMAGE_DEFAULTS['default_grip_state'] = 'o'
+
 
 # ------------------------------------------------------------------------------------------------------------
 # XYZ Image Envs
 # ------------------------------------------------------------------------------------------------------------
 
-STACK_XYZ_DEFAULTS = dict(
-    valid_act_t_dof=(1, 1, 1),
-    valid_act_r_dof=(0, 0, 0)
-)
-
-STACK_XYZ_IMAGE_DEFAULTS = dict(**STACK_IMAGE_DEFAULTS, **STACK_XYZ_DEFAULTS)
-STACK3_XYZ_IMAGE_DEFAULTS = dict(**STACK3_IMAGE_DEFAULTS, **STACK_XYZ_DEFAULTS)
+INSERT_XYZ_IMAGE_DEFAULTS = dict(**INSERT_IMAGE_DEFAULTS, **XYZ_DEFAULTS)
+PICK_AND_INSERT_XYZ_IMAGE_DEFAULTS = dict(**PICK_AND_INSERT_IMAGE_DEFAULTS, **XYZ_DEFAULTS)
 
 
-class ThingRosStack2XYZImage(ThingRosStackGeneric):
+class ThingRosInsertXYZImage(ThingRosInsertGeneric):
     def __init__(self, reset_teleop_available=False, success_feedback_available=False):
-
-        super().__init__(**STACK_XYZ_IMAGE_DEFAULTS,
+        super().__init__(**INSERT_XYZ_IMAGE_DEFAULTS,
                          reset_teleop_available=reset_teleop_available,
                          success_feedback_available=success_feedback_available)
 
-class ThingRosStack2XYZImageMB(ThingRosStackGeneric, ThingRosMBEnv):
+class ThingRosInsertXYZImageMB(ThingRosInsertGeneric, ThingRosMBEnv):
     def __init__(self, reset_teleop_available=False, success_feedback_available=False):
-
-        super().__init__(**STACK_XYZ_IMAGE_DEFAULTS,
+        super().__init__(**INSERT_XYZ_IMAGE_DEFAULTS,
                          reset_teleop_available=reset_teleop_available,
                          success_feedback_available=success_feedback_available)
 
-class ThingRosStack3XYZImage(ThingRosStackGeneric):
+class ThingRosPickAndInsertXYZImage(ThingRosInsertGeneric):
     def __init__(self, reset_teleop_available=False, success_feedback_available=False):
-
-        super().__init__(**STACK3_XYZ_IMAGE_DEFAULTS,
+        super().__init__(**INSERT_XYZ_IMAGE_DEFAULTS,
                          reset_teleop_available=reset_teleop_available,
                          success_feedback_available=success_feedback_available)
 
-class ThingRosStack3XYZImageMB(ThingRosStackGeneric, ThingRosMBEnv):
+class ThingRosPickAndInsertXYZImageMB(ThingRosInsertGeneric, ThingRosMBEnv):
     def __init__(self, reset_teleop_available=False, success_feedback_available=False):
-
-        super().__init__(**STACK3_XYZ_IMAGE_DEFAULTS,
+        super().__init__(**INSERT_XYZ_IMAGE_DEFAULTS,
                          reset_teleop_available=reset_teleop_available,
                          success_feedback_available=success_feedback_available)
 
@@ -61,38 +56,30 @@ class ThingRosStack3XYZImageMB(ThingRosStackGeneric, ThingRosMBEnv):
 # 6Dof Image Envs
 # ------------------------------------------------------------------------------------------------------------
 
-STACK_6DOF_DEFAULTS = dict(
-    valid_act_t_dof=(1, 1, 1),
-    valid_act_r_dof=(1, 1, 1)
-)
 
-STACK_6DOF_IMAGE_DEFAULTS = dict(**STACK_IMAGE_DEFAULTS, **STACK_6DOF_DEFAULTS)
-STACK3_6DOF_IMAGE_DEFAULTS = dict(**STACK3_IMAGE_DEFAULTS, **STACK_6DOF_DEFAULTS)
+INSERT_6DOF_IMAGE_DEFAULTS = dict(**INSERT_IMAGE_DEFAULTS, **SIXDOF_DEFAULTS)
+PICK_AND_INSERT_6DOF_IMAGE_DEFAULTS = dict(**PICK_AND_INSERT_IMAGE_DEFAULTS, **SIXDOF_DEFAULTS)
 
-class ThingRosStack26DOFImage(ThingRosStackGeneric):
+class ThingRosInsert6DOFImage(ThingRosInsertGeneric):
     def __init__(self, reset_teleop_available=False, success_feedback_available=False):
-
-        super().__init__(**STACK_6DOF_IMAGE_DEFAULTS,
+        super().__init__(**INSERT_6DOF_IMAGE_DEFAULTS,
                          reset_teleop_available=reset_teleop_available,
                          success_feedback_available=success_feedback_available)
 
-class ThingRosStack26DOFImageMB(ThingRosStackGeneric, ThingRosMBEnv):
+class ThingRosInsert6DOFImageMB(ThingRosInsertGeneric, ThingRosMBEnv):
     def __init__(self, reset_teleop_available=False, success_feedback_available=False):
-
-        super().__init__(**STACK_6DOF_IMAGE_DEFAULTS,
+        super().__init__(**INSERT_6DOF_IMAGE_DEFAULTS,
                          reset_teleop_available=reset_teleop_available,
                          success_feedback_available=success_feedback_available)
 
-class ThingRosStack36DOFImage(ThingRosStackGeneric):
+class ThingRosPickAndInsert6DOFImage(ThingRosInsertGeneric):
     def __init__(self, reset_teleop_available=False, success_feedback_available=False):
-
-        super().__init__(**STACK3_6DOF_IMAGE_DEFAULTS,
+        super().__init__(**PICK_AND_INSERT_6DOF_IMAGE_DEFAULTS,
                          reset_teleop_available=reset_teleop_available,
                          success_feedback_available=success_feedback_available)
 
-class ThingRosStack36DOFImageMB(ThingRosStackGeneric, ThingRosMBEnv):
+class ThingRosPickAndInsert6DOFImageMB(ThingRosInsertGeneric, ThingRosMBEnv):
     def __init__(self, reset_teleop_available=False, success_feedback_available=False):
-
-        super().__init__(**STACK3_6DOF_IMAGE_DEFAULTS,
+        super().__init__(**PICK_AND_INSERT_6DOF_IMAGE_DEFAULTS,
                          reset_teleop_available=reset_teleop_available,
                          success_feedback_available=success_feedback_available)

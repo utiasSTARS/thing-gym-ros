@@ -40,6 +40,10 @@ from thing_gym_ros_catkin.msg import SModel_robot_input, SModel_robot_output  # 
 from thing_gym_ros_catkin.msg import Marker  # need the indigo version to communicate with thing rviz
 
 
+XYZ_DEFAULTS = dict(valid_act_t_dof=(1, 1, 1), valid_act_r_dof=(0, 0, 0))
+SIXDOF_DEFAULTS = dict(valid_act_t_dof=(1, 1, 1), valid_act_r_dof=(1, 1, 1))
+
+
 class ThingRosEnv(gym.Env):
     # implement as needed
     # CONTROL_TYPES = ('delta_tool, delta_joint, pos_tool, pos_joint, vel_tool, vel_joint')
@@ -704,7 +708,7 @@ class ThingRosEnv(gym.Env):
         if 'timestep' in self.state_data:
             # adjust range of timesteps to be between -1 and 1
             adj_timestep = (self.ep_timesteps / self._max_episode_steps - .5) * 2
-            return_obs['timestep'] = adj_timestep
+            return_obs['timestep'] = np.array([adj_timestep])
             return_arr.append(adj_timestep)
 
         if 'obj_pos' in self.state_data:
