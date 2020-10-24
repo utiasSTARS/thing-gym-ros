@@ -36,6 +36,13 @@ action_lpf_beta: 1.0           # low pass filter for action, 1 is no effect, clo
                               # this should be as high as possible since otherwise the environment becomes
                               # highly non-stationary
 
+# position impedance control
+position_impedance_K_trans: 1000  # all members of diagonal stiffness matrix for translational params
+position_impedance_K_rot: 1000    # same as above but for rotational params
+position_impedance_max_F: 5       # Max allowable force in N (as a total in any direction)
+position_impedance_max_T: 1       # max allowable torque in Nm (total in any direction)
+
+
 # thing_control params
 servo_time_from_start: .3    # Time after publishing that controller should aim to be at new
                               # position by. Lower --> faster, but jerkier. -- originally set to .15, .3 acts as an lpf

@@ -66,7 +66,8 @@ class ThingRosEnv(gym.Env):
                  failure_causes_done=False,
                  reset_teleop_available=False,
                  success_feedback_available=False,
-                 num_grip_fingers=3
+                 num_grip_fingers=3,
+                 position_impedance_control=False
                  ):
         """
         Requires thing + related topics and action servers (either in sim or reality) to already be launched
@@ -103,6 +104,11 @@ class ThingRosEnv(gym.Env):
         self.failure_causes_done = failure_causes_done
         self.dense_reward = dense_reward
         self.num_objs = num_objs
+        self.position_impedance_control = position_impedance_control
+        self.pic_K_trans = self.cfg['position_impedance_K_trans']
+        self.pic_K_rot = self.cfg['position_impedance_K_rot']
+        self.pic_max_F = self.cfg['position_impedance_max_F']
+        self.pic_max_T = self.cfg['position_impedance_max_T']
         self.image_width = self.cfg['img_width']
         self.image_height = self.cfg['img_height']
         self.image_center_crop = self.cfg['img_center_crop']
@@ -267,11 +273,16 @@ class ThingRosEnv(gym.Env):
             self.latest_depth = None
             self._raw_depth_height, self._raw_depth_width = None, None
 
-        if 'force_torque' in self.state_data:
+        if 'force_torque' in self.state_data or self.position_impedance_control:
             self.sub_ft = rospy.Subscriber('/robotiq_force_torque_wrench_zero', WrenchStamped, self.ft_cb)
             self.pub_ft_zero = rospy.Publisher('/FT_sensor_bias_node/set_zero', Bool, queue_size=1)
             self.ft_lock = Lock()
             self.latest_ft = None
+            self.latest_ft_raw = None
+            if self._poses_ref_frame == 'b':
+                self.tf_ft_ref = rnt.tf_msg.TransformWithUpdate(self.tf_buffer, 'FT300_link', 'base_link')
+            elif self._poses_ref_frame == 'w':
+                self.tf_ft_ref = rnt.tf_msg.TransformWithUpdate(self.tf_buffer, 'FT300_link', 'odom')
 
         if grip_in_action:
             self.sub_grip = rospy.Subscriber('/SModelRobotInput', SModel_robot_input, self.grip_cb)
@@ -382,6 +393,11 @@ class ThingRosEnv(gym.Env):
 
             T_new, limit_reached = self._limit_action(T_new)
 
+            if self.position_impedance_control:
+                print("Before fix: ", T_new)
+                T_new = self._position_impedance_control_action(T_new)
+                print("After fix: ", T_new)
+
             servo_msg = rnt.thing.get_servo_msg(mat=T_new, base_tf_msg=rnt.tf_msg.mat_to_tf_msg(self.ep_odom_base_mat))
 
         # process grip action
@@ -395,8 +411,9 @@ class ThingRosEnv(gym.Env):
         g_msg = KeyboardTrigger()
         g_msg.label = grip
 
-        self.pub_servo.publish(servo_msg)
-        self.pub_gripper.publish(g_msg)
+        # TODO uncomment when done testing impedance control
+        # self.pub_servo.publish(servo_msg)
+        # self.pub_gripper.publish(g_msg)
 
         self.gui_lock.release()
         rospy.sleep(self._fixed_time_after_action)
@@ -470,6 +487,17 @@ class ThingRosEnv(gym.Env):
             raise NotImplementedError('No limits implemented for chosen control type.')
 
         return limited_action, limit_reached
+
+    def _position_impedance_control_action(self, T_des):
+        """ Return a new action based on simple position impedance. """
+        K = np.diag([self.pic_K_trans] * 3 + [self.pic_K_rot] * 3)
+        ft = self.latest_ft_raw
+        self.tf_ft_ref.update()
+        T_ft_ref_to_des_ref = self.tf_ft_ref.as_mat()
+        f_max = self.pic_max_F
+        t_max = self.pic_max_T
+        T_mod = rnt.thing.get_position_impedance_control_action(T_des, K, ft, f_max, t_max, T_ft_ref_to_des_ref)
+        return T_mod
 
     def _get_reward(self):
         """ Should be overwritten by children. """
@@ -873,11 +901,14 @@ class ThingRosEnv(gym.Env):
 
     def ft_cb(self, msg):
         # to make data more friendly for learning, going to "normalize" it to be approximately within -1, 1
-        # "a lot" of force is 50N, "a lot" of torque is 10, anything below 2.5N or .5Nm is considered noise, so cut off
+        # "a lot" of force is 50N, "a lot" of torque is 10, anything below 2.5N or .1Nm is considered noise, so cut off
         fo = msg.wrench.force
         to = msg.wrench.torque
         fo = np.array([fo.x, fo.y, fo.z])
         to = np.array([to.x, to.y, to.z])
+        self.ft_lock.acquire()
+        self.latest_ft_raw = np.concatenate([fo, to])
+        self.ft_lock.release()
         fo[np.abs(fo) < 2.5] = 0
         to[np.abs(to) < .1] = 0
         force_fixed = fo / 50
