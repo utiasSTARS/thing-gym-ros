@@ -29,32 +29,32 @@ REACHING_XY_IMAGE_DEFAULTS = dict(**REACHING_IMAGE_DEFAULTS, **REACHING_XY_DEFAU
 REACH_AND_GRASP_XY_IMAGE_DEFAULTS = dict(**REACH_AND_GRASP_IMAGE_DEFAULTS, **REACHING_XY_DEFAULTS)
 
 class ThingRosReachingXYImage(ThingRosReachingGeneric):
-    def __init__(self, reset_teleop_available=False, success_feedback_available=False):
+    def __init__(self, reset_teleop_available=False, success_feedback_available=False, **kwargs):
 
         super().__init__(**REACHING_XY_IMAGE_DEFAULTS,
                          reset_teleop_available=reset_teleop_available,
-                         success_feedback_available=success_feedback_available)
+                         success_feedback_available=success_feedback_available, **kwargs)
 
 class ThingRosReachingXYImageMB(ThingRosReachingGeneric, ThingRosMBEnv):
-    def __init__(self, reset_teleop_available=False, success_feedback_available=False):
+    def __init__(self, reset_teleop_available=False, success_feedback_available=False, **kwargs):
 
         super().__init__(**REACHING_XY_IMAGE_DEFAULTS,
                          reset_teleop_available=reset_teleop_available,
-                         success_feedback_available=success_feedback_available)
+                         success_feedback_available=success_feedback_available, **kwargs)
 
 class ThingRosReachAndGraspXYImage(ThingRosReachingGeneric):
-    def __init__(self, reset_teleop_available=False, success_feedback_available=False):
+    def __init__(self, reset_teleop_available=False, success_feedback_available=False, **kwargs):
 
         super().__init__(**REACH_AND_GRASP_XY_IMAGE_DEFAULTS,
                          reset_teleop_available=reset_teleop_available,
-                         success_feedback_available=success_feedback_available)
+                         success_feedback_available=success_feedback_available, **kwargs)
 
 class ThingRosReachAndGraspXYImageMB(ThingRosReachingGeneric, ThingRosMBEnv):
-    def __init__(self, reset_teleop_available=False, success_feedback_available=False):
+    def __init__(self, reset_teleop_available=False, success_feedback_available=False, **kwargs):
 
         super().__init__(**REACH_AND_GRASP_XY_IMAGE_DEFAULTS,
                          reset_teleop_available=reset_teleop_available,
-                         success_feedback_available=success_feedback_available)
+                         success_feedback_available=success_feedback_available, **kwargs)
 
 # ------------------------------------------------------------------------------------------------------------
 # XYZ Image Envs
@@ -69,32 +69,32 @@ REACHING_XYZ_IMAGE_DEFAULTS = dict(**REACHING_IMAGE_DEFAULTS, **REACHING_XYZ_DEF
 REACH_AND_GRASP_XYZ_IMAGE_DEFAULTS = dict(**REACH_AND_GRASP_IMAGE_DEFAULTS, **REACHING_XYZ_DEFAULTS)
 
 class ThingRosReachingXYZImage(ThingRosReachingGeneric):
-    def __init__(self, reset_teleop_available=False, success_feedback_available=False):
+    def __init__(self, reset_teleop_available=False, success_feedback_available=False, **kwargs):
 
         super().__init__(**REACHING_XYZ_IMAGE_DEFAULTS,
                          reset_teleop_available=reset_teleop_available,
-                         success_feedback_available=success_feedback_available)
+                         success_feedback_available=success_feedback_available, **kwargs)
 
 class ThingRosReachingXYZImageMB(ThingRosReachingGeneric, ThingRosMBEnv):
-    def __init__(self, reset_teleop_available=False, success_feedback_available=False):
+    def __init__(self, reset_teleop_available=False, success_feedback_available=False, **kwargs):
 
         super().__init__(**REACHING_XYZ_IMAGE_DEFAULTS,
                          reset_teleop_available=reset_teleop_available,
-                         success_feedback_available=success_feedback_available)
+                         success_feedback_available=success_feedback_available, **kwargs)
 
 class ThingRosReachAndGraspXYZImage(ThingRosReachingGeneric):
-    def __init__(self, reset_teleop_available=False, success_feedback_available=False):
+    def __init__(self, reset_teleop_available=False, success_feedback_available=False, **kwargs):
 
         super().__init__(**REACH_AND_GRASP_XYZ_IMAGE_DEFAULTS,
                          reset_teleop_available=reset_teleop_available,
-                         success_feedback_available=success_feedback_available)
+                         success_feedback_available=success_feedback_available, **kwargs)
 
 class ThingRosReachAndGraspXYZImageMB(ThingRosReachingGeneric, ThingRosMBEnv):
-    def __init__(self, reset_teleop_available=False, success_feedback_available=False):
+    def __init__(self, reset_teleop_available=False, success_feedback_available=False, **kwargs):
 
         super().__init__(**REACH_AND_GRASP_XYZ_IMAGE_DEFAULTS,
                          reset_teleop_available=reset_teleop_available,
-                         success_feedback_available=success_feedback_available)
+                         success_feedback_available=success_feedback_available, **kwargs)
 
 # ------------------------------------------------------------------------------------------------------------
 # 6Dof Image Envs
@@ -109,29 +109,29 @@ REACHING_6DOF_IMAGE_DEFAULTS = dict(**REACHING_IMAGE_DEFAULTS, **REACHING_6DOF_D
 REACH_AND_GRASP_6DOF_IMAGE_DEFAULTS = dict(**REACH_AND_GRASP_IMAGE_DEFAULTS, **REACHING_6DOF_DEFAULTS)
 
 class ThingRosReaching6DOFImage(ThingRosReachingGeneric):
-    def __init__(self, reset_teleop_available=False, success_feedback_available=False):
+    def __init__(self, reset_teleop_available=False, success_feedback_available=False, **kwargs):
 
         super().__init__(**REACHING_6DOF_IMAGE_DEFAULTS,
                          reset_teleop_available=reset_teleop_available,
-                         success_feedback_available=success_feedback_available)
+                         success_feedback_available=success_feedback_available, **kwargs)
 
 class ThingRosReaching6DOFImageMB(ThingRosReachingGeneric, ThingRosMBEnv):
-    def __init__(self, reset_teleop_available=False, success_feedback_available=False):
+    def __init__(self, reset_teleop_available=False, success_feedback_available=False, **kwargs):
 
         super().__init__(**REACHING_6DOF_IMAGE_DEFAULTS,
                          reset_teleop_available=reset_teleop_available,
-                         success_feedback_available=success_feedback_available)
+                         success_feedback_available=success_feedback_available, **kwargs)
 
 class ThingRosReachAndGrasp6DOFImage(ThingRosReachingGeneric):
-    def __init__(self, reset_teleop_available=False, success_feedback_available=False):
+    def __init__(self, reset_teleop_available=False, success_feedback_available=False, **kwargs):
 
         super().__init__(**REACH_AND_GRASP_6DOF_IMAGE_DEFAULTS,
                          reset_teleop_available=reset_teleop_available,
-                         success_feedback_available=success_feedback_available)
+                         success_feedback_available=success_feedback_available, **kwargs)
 
 class ThingRosReachAndGrasp6DOFImageMB(ThingRosReachingGeneric, ThingRosMBEnv):
-    def __init__(self, reset_teleop_available=False, success_feedback_available=False):
+    def __init__(self, reset_teleop_available=False, success_feedback_available=False, **kwargs):
 
         super().__init__(**REACH_AND_GRASP_6DOF_IMAGE_DEFAULTS,
                          reset_teleop_available=reset_teleop_available,
-                         success_feedback_available=success_feedback_available)
+                         success_feedback_available=success_feedback_available, **kwargs)

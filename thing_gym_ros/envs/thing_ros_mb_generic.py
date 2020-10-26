@@ -22,6 +22,9 @@ class ThingRosMBEnv(ThingRosEnv):
         """ A generic thing env that allows for moving the base between episodes. """
         super().__init__(*args, **kwargs)
 
+        if kwargs['info_env_only']:
+            return
+
         # extra tf objs -- need (reasonably) calibrated camera
         self.tf_odom_cam = rnt.tf_msg.TransformWithUpdate(self.tf_buffer, 'odom', 'camera_link')
         self.tf_base_cam = rnt.tf_msg.TransformWithUpdate(self.tf_buffer, 'base_link', 'camera_link')

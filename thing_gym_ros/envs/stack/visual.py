@@ -30,32 +30,32 @@ STACK3_XYZ_IMAGE_DEFAULTS = dict(**STACK3_IMAGE_DEFAULTS, **STACK_XYZ_DEFAULTS)
 
 
 class ThingRosStack2XYZImage(ThingRosStackGeneric):
-    def __init__(self, reset_teleop_available=False, success_feedback_available=False):
+    def __init__(self, reset_teleop_available=False, success_feedback_available=False, **kwargs):
 
         super().__init__(**STACK_XYZ_IMAGE_DEFAULTS,
                          reset_teleop_available=reset_teleop_available,
-                         success_feedback_available=success_feedback_available)
+                         success_feedback_available=success_feedback_available, **kwargs)
 
 class ThingRosStack2XYZImageMB(ThingRosStackGeneric, ThingRosMBEnv):
-    def __init__(self, reset_teleop_available=False, success_feedback_available=False):
+    def __init__(self, reset_teleop_available=False, success_feedback_available=False, **kwargs):
 
         super().__init__(**STACK_XYZ_IMAGE_DEFAULTS,
                          reset_teleop_available=reset_teleop_available,
-                         success_feedback_available=success_feedback_available)
+                         success_feedback_available=success_feedback_available, **kwargs)
 
 class ThingRosStack3XYZImage(ThingRosStackGeneric):
-    def __init__(self, reset_teleop_available=False, success_feedback_available=False):
+    def __init__(self, reset_teleop_available=False, success_feedback_available=False, **kwargs):
 
         super().__init__(**STACK3_XYZ_IMAGE_DEFAULTS,
                          reset_teleop_available=reset_teleop_available,
-                         success_feedback_available=success_feedback_available)
+                         success_feedback_available=success_feedback_available, **kwargs)
 
 class ThingRosStack3XYZImageMB(ThingRosStackGeneric, ThingRosMBEnv):
-    def __init__(self, reset_teleop_available=False, success_feedback_available=False):
+    def __init__(self, reset_teleop_available=False, success_feedback_available=False, **kwargs):
 
         super().__init__(**STACK3_XYZ_IMAGE_DEFAULTS,
                          reset_teleop_available=reset_teleop_available,
-                         success_feedback_available=success_feedback_available)
+                         success_feedback_available=success_feedback_available, **kwargs)
 
 # ------------------------------------------------------------------------------------------------------------
 # 6Dof Image Envs
@@ -70,29 +70,29 @@ STACK_6DOF_IMAGE_DEFAULTS = dict(**STACK_IMAGE_DEFAULTS, **STACK_6DOF_DEFAULTS)
 STACK3_6DOF_IMAGE_DEFAULTS = dict(**STACK3_IMAGE_DEFAULTS, **STACK_6DOF_DEFAULTS)
 
 class ThingRosStack26DOFImage(ThingRosStackGeneric):
-    def __init__(self, reset_teleop_available=False, success_feedback_available=False):
+    def __init__(self, reset_teleop_available=False, success_feedback_available=False, **kwargs):
 
         super().__init__(**STACK_6DOF_IMAGE_DEFAULTS,
                          reset_teleop_available=reset_teleop_available,
-                         success_feedback_available=success_feedback_available)
+                         success_feedback_available=success_feedback_available, **kwargs)
 
 class ThingRosStack26DOFImageMB(ThingRosStackGeneric, ThingRosMBEnv):
-    def __init__(self, reset_teleop_available=False, success_feedback_available=False):
+    def __init__(self, reset_teleop_available=False, success_feedback_available=False, **kwargs):
 
         super().__init__(**STACK_6DOF_IMAGE_DEFAULTS,
                          reset_teleop_available=reset_teleop_available,
-                         success_feedback_available=success_feedback_available)
+                         success_feedback_available=success_feedback_available, **kwargs)
 
 class ThingRosStack36DOFImage(ThingRosStackGeneric):
-    def __init__(self, reset_teleop_available=False, success_feedback_available=False):
+    def __init__(self, reset_teleop_available=False, success_feedback_available=False, **kwargs):
 
         super().__init__(**STACK3_6DOF_IMAGE_DEFAULTS,
                          reset_teleop_available=reset_teleop_available,
-                         success_feedback_available=success_feedback_available)
+                         success_feedback_available=success_feedback_available, **kwargs)
 
 class ThingRosStack36DOFImageMB(ThingRosStackGeneric, ThingRosMBEnv):
-    def __init__(self, reset_teleop_available=False, success_feedback_available=False):
+    def __init__(self, reset_teleop_available=False, success_feedback_available=False, **kwargs):
 
         super().__init__(**STACK3_6DOF_IMAGE_DEFAULTS,
                          reset_teleop_available=reset_teleop_available,
-                         success_feedback_available=success_feedback_available)
+                         success_feedback_available=success_feedback_available, **kwargs)

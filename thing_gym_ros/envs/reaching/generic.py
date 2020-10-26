@@ -18,7 +18,8 @@ class ThingRosReachingGeneric(ThingRosEnv):
                  reset_teleop_available=False,
                  success_feedback_available=False,
                  obj_reset_box_size=(.1, .1),
-                 obj_needs_resetting=True  # for simple state reaching envs, goal can just be arbitrary pos in space
+                 obj_needs_resetting=True,  # for simple state reaching envs, goal can just be arbitrary pos in space
+                 **kwargs
                  ):
         super().__init__(img_in_state=img_in_state,
                          depth_in_state=depth_in_state,
@@ -34,7 +35,8 @@ class ThingRosReachingGeneric(ThingRosEnv):
                          success_causes_done=success_causes_done,
                          failure_causes_done=failure_causes_done,
                          reset_teleop_available=reset_teleop_available,
-                         success_feedback_available=success_feedback_available)
+                         success_feedback_available=success_feedback_available,
+                         **kwargs)
 
         self.obj_reset_box_size = obj_reset_box_size
         self.obj_needs_resetting = obj_needs_resetting

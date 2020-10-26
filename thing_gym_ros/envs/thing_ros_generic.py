@@ -67,15 +67,19 @@ class ThingRosEnv(gym.Env):
                  reset_teleop_available=False,
                  success_feedback_available=False,
                  num_grip_fingers=3,
-                 position_impedance_control=False
+                 position_impedance_control=False,
+                 info_env_only=False  # if True, env can only be used for getting space sizes and other info
                  ):
         """
         Requires thing + related topics and action servers (either in sim or reality) to already be launched
         separately.
         """
 
-        rospy.init_node('thing_gym')
-        self.sim = rospy.get_param('/simulation')
+        if not info_env_only:
+            rospy.init_node('thing_gym')
+            self.sim = rospy.get_param('/simulation')
+        else:
+            self.sim = False
 
         # load config
         base_config_file = 'configs/base.yaml' if not self.sim else 'configs/base_sim.yaml'
@@ -91,13 +95,11 @@ class ThingRosEnv(gym.Env):
 
         # env setup
         assert self.cfg['control_type'] in ThingRosEnv.CONTROL_TYPES, '%s is not in the valid control types %s' % \
-                                                          (self.cfg['control_type'], ThingRosEnv.CONTROL_TYPES)
+                                                                      (self.cfg['control_type'],
+                                                                       ThingRosEnv.CONTROL_TYPES)
         self._control_type = self.cfg['control_type']
         self._poses_ref_frame = self.cfg['poses_ref_frame']
         self._rot_act_rep = self.cfg['rot_act_rep']
-        self.grip_in_action = grip_in_action
-        self.default_grip_state = default_grip_state
-        self.state_data = state_data
         self.img_in_state = img_in_state
         self.depth_in_state = depth_in_state
         self.success_causes_done = success_causes_done
@@ -117,8 +119,7 @@ class ThingRosEnv(gym.Env):
         self._control_freq = self.cfg['control_freq']
         self.action_lpf_beta = self.cfg['action_lpf_beta']
         self._max_episode_steps = int(max_real_time * self._control_freq)
-        self.valid_act_t_dof = np.array(valid_act_t_dof)
-        self.valid_act_r_dof = np.array(valid_act_r_dof)
+
         self.num_prev_pose = self.cfg['num_prev_pose']
         self.num_prev_grip = self.cfg['num_prev_grip']
         self.pos_limits = self.cfg['pos_limits']
@@ -129,31 +130,16 @@ class ThingRosEnv(gym.Env):
         self._require_img_depth_registration = self.cfg['require_img_depth_registration']
         self._sensor = self.cfg['sensor']
         self._cam_forward_axis = self.cfg['cam_forward_axis']
+        self.state_data = state_data
+        self.valid_act_t_dof = np.array(valid_act_t_dof)
+        self.valid_act_r_dof = np.array(valid_act_r_dof)
+        self.grip_in_action = grip_in_action
+        self.default_grip_state = default_grip_state
         if self._rot_act_rep == 'quat':
             self._quat_in_action = True
             raise NotImplementedError('Implement if needed')
         else:
             self._quat_in_action = False
-
-        # marker in rviz for pos limits
-        self.pub_pos_limits = rospy.Publisher('pos_limits_marker', Marker, queue_size=1)
-        self.pos_limits_marker = Marker()
-        self.pos_limits_marker.header.frame_id = 'base_link'
-        self.pos_limits_marker.header.stamp = rospy.Time(0)
-        self.pos_limits_marker.ns = 'pos_limits'
-        self.pos_limits_marker.id = 0
-        self.pos_limits_marker.type = Marker.CUBE
-        self.pos_limits_marker.action = Marker.ADD
-        self.pos_limits_marker.pose.position.x = (self.pos_limits[0] + self.pos_limits[3]) / 2
-        self.pos_limits_marker.pose.position.y = (self.pos_limits[1] + self.pos_limits[4]) / 2
-        self.pos_limits_marker.pose.position.z = (self.pos_limits[2] + self.pos_limits[5]) / 2
-        self.pos_limits_marker.pose.orientation.w = 1.0  # xyz default to 0
-        self.pos_limits_marker.scale.x = np.abs(self.pos_limits[0] - self.pos_limits[3])
-        self.pos_limits_marker.scale.y = np.abs(self.pos_limits[1] - self.pos_limits[4])
-        self.pos_limits_marker.scale.z = np.abs(self.pos_limits[2] - self.pos_limits[5])
-        self.pos_limits_marker.color.g = 1.0
-        self.pos_limits_marker.color.a = .3
-        self.pos_limits_marker.lifetime = rospy.Duration()
 
         # gym setup
         self._num_trans = sum(self.valid_act_t_dof)
@@ -186,6 +172,29 @@ class ThingRosEnv(gym.Env):
             self.observation_space = spaces.Dict(spaces=obs_space_dict)
         else:
             self.observation_space = state_space
+
+        if info_env_only:
+            return
+
+        # marker in rviz for pos limits
+        self.pub_pos_limits = rospy.Publisher('pos_limits_marker', Marker, queue_size=1)
+        self.pos_limits_marker = Marker()
+        self.pos_limits_marker.header.frame_id = 'base_link'
+        self.pos_limits_marker.header.stamp = rospy.Time(0)
+        self.pos_limits_marker.ns = 'pos_limits'
+        self.pos_limits_marker.id = 0
+        self.pos_limits_marker.type = Marker.CUBE
+        self.pos_limits_marker.action = Marker.ADD
+        self.pos_limits_marker.pose.position.x = (self.pos_limits[0] + self.pos_limits[3]) / 2
+        self.pos_limits_marker.pose.position.y = (self.pos_limits[1] + self.pos_limits[4]) / 2
+        self.pos_limits_marker.pose.position.z = (self.pos_limits[2] + self.pos_limits[5]) / 2
+        self.pos_limits_marker.pose.orientation.w = 1.0  # xyz default to 0
+        self.pos_limits_marker.scale.x = np.abs(self.pos_limits[0] - self.pos_limits[3])
+        self.pos_limits_marker.scale.y = np.abs(self.pos_limits[1] - self.pos_limits[4])
+        self.pos_limits_marker.scale.z = np.abs(self.pos_limits[2] - self.pos_limits[5])
+        self.pos_limits_marker.color.g = 1.0
+        self.pos_limits_marker.color.a = .3
+        self.pos_limits_marker.lifetime = rospy.Duration()
 
         # parameters for thing_control
         self.thing_control_dyn_rec_client = dynamic_reconfigure.client.Client('/thing_control')

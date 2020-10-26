@@ -30,28 +30,28 @@ PICK_AND_INSERT_XYZ_IMAGE_DEFAULTS = dict(**PICK_AND_INSERT_IMAGE_DEFAULTS, **XY
 
 
 class ThingRosInsertXYZImage(ThingRosInsertGeneric):
-    def __init__(self, reset_teleop_available=False, success_feedback_available=False):
+    def __init__(self, reset_teleop_available=False, success_feedback_available=False, **kwargs):
         super().__init__(**INSERT_XYZ_IMAGE_DEFAULTS,
                          reset_teleop_available=reset_teleop_available,
-                         success_feedback_available=success_feedback_available)
+                         success_feedback_available=success_feedback_available, **kwargs)
 
 class ThingRosInsertXYZImageMB(ThingRosInsertGeneric, ThingRosMBEnv):
-    def __init__(self, reset_teleop_available=False, success_feedback_available=False):
+    def __init__(self, reset_teleop_available=False, success_feedback_available=False, **kwargs):
         super().__init__(**INSERT_XYZ_IMAGE_DEFAULTS,
                          reset_teleop_available=reset_teleop_available,
-                         success_feedback_available=success_feedback_available)
+                         success_feedback_available=success_feedback_available, **kwargs)
 
 class ThingRosPickAndInsertXYZImage(ThingRosInsertGeneric):
-    def __init__(self, reset_teleop_available=False, success_feedback_available=False):
+    def __init__(self, reset_teleop_available=False, success_feedback_available=False, **kwargs):
         super().__init__(**INSERT_XYZ_IMAGE_DEFAULTS,
                          reset_teleop_available=reset_teleop_available,
-                         success_feedback_available=success_feedback_available)
+                         success_feedback_available=success_feedback_available, **kwargs)
 
 class ThingRosPickAndInsertXYZImageMB(ThingRosInsertGeneric, ThingRosMBEnv):
-    def __init__(self, reset_teleop_available=False, success_feedback_available=False):
+    def __init__(self, reset_teleop_available=False, success_feedback_available=False, **kwargs):
         super().__init__(**INSERT_XYZ_IMAGE_DEFAULTS,
                          reset_teleop_available=reset_teleop_available,
-                         success_feedback_available=success_feedback_available)
+                         success_feedback_available=success_feedback_available, **kwargs)
 
 # ------------------------------------------------------------------------------------------------------------
 # 6Dof Image Envs
@@ -62,25 +62,25 @@ INSERT_6DOF_IMAGE_DEFAULTS = dict(**INSERT_IMAGE_DEFAULTS, **SIXDOF_DEFAULTS)
 PICK_AND_INSERT_6DOF_IMAGE_DEFAULTS = dict(**PICK_AND_INSERT_IMAGE_DEFAULTS, **SIXDOF_DEFAULTS)
 
 class ThingRosInsert6DOFImage(ThingRosInsertGeneric):
-    def __init__(self, reset_teleop_available=False, success_feedback_available=False):
+    def __init__(self, reset_teleop_available=False, success_feedback_available=False, **kwargs):
         super().__init__(**INSERT_6DOF_IMAGE_DEFAULTS,
                          reset_teleop_available=reset_teleop_available,
-                         success_feedback_available=success_feedback_available)
+                         success_feedback_available=success_feedback_available, **kwargs)
 
 class ThingRosInsert6DOFImageMB(ThingRosInsertGeneric, ThingRosMBEnv):
-    def __init__(self, reset_teleop_available=False, success_feedback_available=False):
+    def __init__(self, reset_teleop_available=False, success_feedback_available=False, **kwargs):
         super().__init__(**INSERT_6DOF_IMAGE_DEFAULTS,
                          reset_teleop_available=reset_teleop_available,
-                         success_feedback_available=success_feedback_available)
+                         success_feedback_available=success_feedback_available, **kwargs)
 
 class ThingRosPickAndInsert6DOFImage(ThingRosInsertGeneric):
-    def __init__(self, reset_teleop_available=False, success_feedback_available=False):
+    def __init__(self, reset_teleop_available=False, success_feedback_available=False, **kwargs):
         super().__init__(**PICK_AND_INSERT_6DOF_IMAGE_DEFAULTS,
                          reset_teleop_available=reset_teleop_available,
-                         success_feedback_available=success_feedback_available)
+                         success_feedback_available=success_feedback_available, **kwargs)
 
 class ThingRosPickAndInsert6DOFImageMB(ThingRosInsertGeneric, ThingRosMBEnv):
-    def __init__(self, reset_teleop_available=False, success_feedback_available=False):
+    def __init__(self, reset_teleop_available=False, success_feedback_available=False, **kwargs):
         super().__init__(**PICK_AND_INSERT_6DOF_IMAGE_DEFAULTS,
                          reset_teleop_available=reset_teleop_available,
-                         success_feedback_available=success_feedback_available)
+                         success_feedback_available=success_feedback_available, **kwargs)
