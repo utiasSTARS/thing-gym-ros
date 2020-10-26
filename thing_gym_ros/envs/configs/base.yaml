@@ -21,12 +21,10 @@ reset_joint_pos: [-1.71, -1.2, 1.61, 4.44, -0.87, -2.1]     # 1 per joint, ensur
 # control
 control_type: 'delta_tool'    # 'delta_tool', 'delta_joint', 'pos_tool', 'pos_joint', 'vel_tool', 'vel_joint'
 rot_act_rep: 'rod'            # 'rod' for rodrigues, 'quat' for quaternion
-#control_freq: 8               # in Hz
 control_freq: 10               # in Hz
 poses_ref_frame: 'b'          # 'b' or 'w' for base or world
 arm_max_trans_vel: .15        # m/s, also value used for resets
 arm_max_rot_vel: .3           # rad/s, also used for resets
-#max_policy_time: .07          # max expected time that a running policy would take -- this should be set as low as possible
 max_policy_time: .04          # max expected time that a running policy would take -- this should be set as low as possible
                               # this also should include the max time to process images before they are returned
                               # in step AND the forward time for the failure predictor
@@ -37,10 +35,14 @@ action_lpf_beta: 1.0           # low pass filter for action, 1 is no effect, clo
                               # highly non-stationary
 
 # position impedance control
-position_impedance_K_trans: 1000  # all members of diagonal stiffness matrix for translational params
-position_impedance_K_rot: 1000    # same as above but for rotational params
+position_impedance_K_trans: 3000  # all members of diagonal stiffness matrix for translational params
+#position_impedance_K_trans: 500  # all members of diagonal stiffness matrix for translational params
+position_impedance_D_trans: 1500   # diagonal damping matrix -- currently unused
+position_impedance_K_rot: 300    # same as above but for rotational params
+#position_impedance_K_rot: 50    # same as above but for rotational params
+position_impedance_D_rot: 10    # same as above but for rotational params -- currently unused
 position_impedance_max_F: 5       # Max allowable force in N (as a total in any direction)
-position_impedance_max_T: 1       # max allowable torque in Nm (total in any direction)
+position_impedance_max_T: 0.5       # max allowable torque in Nm (total in any direction)
 
 
 # thing_control params

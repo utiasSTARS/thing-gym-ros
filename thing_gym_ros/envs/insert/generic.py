@@ -38,7 +38,8 @@ class ThingRosInsertGeneric(ThingRosEnv):
                          success_causes_done=success_causes_done,
                          failure_causes_done=failure_causes_done,
                          reset_teleop_available=reset_teleop_available,
-                         success_feedback_available=success_feedback_available)
+                         success_feedback_available=success_feedback_available,
+                         position_impedance_control=True)
 
         self.obj_reset_box_size = obj_reset_box_size
         self.obj_needs_resetting = obj_needs_resetting

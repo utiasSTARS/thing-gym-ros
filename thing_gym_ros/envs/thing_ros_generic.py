@@ -106,7 +106,9 @@ class ThingRosEnv(gym.Env):
         self.num_objs = num_objs
         self.position_impedance_control = position_impedance_control
         self.pic_K_trans = self.cfg['position_impedance_K_trans']
+        self.pic_D_trans = self.cfg['position_impedance_D_trans']
         self.pic_K_rot = self.cfg['position_impedance_K_rot']
+        self.pic_D_rot = self.cfg['position_impedance_D_rot']
         self.pic_max_F = self.cfg['position_impedance_max_F']
         self.pic_max_T = self.cfg['position_impedance_max_T']
         self.image_width = self.cfg['img_width']
@@ -277,12 +279,15 @@ class ThingRosEnv(gym.Env):
             self.sub_ft = rospy.Subscriber('/robotiq_force_torque_wrench_zero', WrenchStamped, self.ft_cb)
             self.pub_ft_zero = rospy.Publisher('/FT_sensor_bias_node/set_zero', Bool, queue_size=1)
             self.ft_lock = Lock()
+            self.ft_filter_size = 5
+            self.ft_filter = None
             self.latest_ft = None
             self.latest_ft_raw = None
             if self._poses_ref_frame == 'b':
                 self.tf_ft_ref = rnt.tf_msg.TransformWithUpdate(self.tf_buffer, 'FT300_link', 'base_link')
             elif self._poses_ref_frame == 'w':
                 self.tf_ft_ref = rnt.tf_msg.TransformWithUpdate(self.tf_buffer, 'FT300_link', 'odom')
+            self.tf_ft_tool = rnt.tf_msg.TransformWithUpdate(self.tf_buffer, 'FT300_link', 'thing_tool')
 
         if grip_in_action:
             self.sub_grip = rospy.Subscriber('/SModelRobotInput', SModel_robot_input, self.grip_cb)
@@ -394,9 +399,10 @@ class ThingRosEnv(gym.Env):
             T_new, limit_reached = self._limit_action(T_new)
 
             if self.position_impedance_control:
-                print("Before fix: ", T_new)
+                np.set_printoptions(suppress=True, precision=4)
+                # print("Before fix: ", T_new[:3, 3])
                 T_new = self._position_impedance_control_action(T_new)
-                print("After fix: ", T_new)
+                # print("After fix: ", T_new[:3, 3])
 
             servo_msg = rnt.thing.get_servo_msg(mat=T_new, base_tf_msg=rnt.tf_msg.mat_to_tf_msg(self.ep_odom_base_mat))
 
@@ -411,9 +417,8 @@ class ThingRosEnv(gym.Env):
         g_msg = KeyboardTrigger()
         g_msg.label = grip
 
-        # TODO uncomment when done testing impedance control
-        # self.pub_servo.publish(servo_msg)
-        # self.pub_gripper.publish(g_msg)
+        self.pub_servo.publish(servo_msg)
+        self.pub_gripper.publish(g_msg)
 
         self.gui_lock.release()
         rospy.sleep(self._fixed_time_after_action)
@@ -491,12 +496,30 @@ class ThingRosEnv(gym.Env):
     def _position_impedance_control_action(self, T_des):
         """ Return a new action based on simple position impedance. """
         K = np.diag([self.pic_K_trans] * 3 + [self.pic_K_rot] * 3)
+        D = np.diag([self.pic_D_trans] * 3 + [self.pic_D_rot] * 3)
         ft = self.latest_ft_raw
         self.tf_ft_ref.update()
         T_ft_ref_to_des_ref = self.tf_ft_ref.as_mat()
+        if self._poses_ref_frame == 'w':
+            T_tool_to_des = rnt.tf_mat.invert_transform(self.tf_odom_tool.as_mat()).dot(T_des)
+        elif self._poses_ref_frame == 'b':
+            T_tool_to_des = rnt.tf_mat.invert_transform(self.tf_base_tool.as_mat()).dot(T_des)
         f_max = self.pic_max_F
         t_max = self.pic_max_T
-        T_mod = rnt.thing.get_position_impedance_control_action(T_des, K, ft, f_max, t_max, T_ft_ref_to_des_ref)
+
+        # get current velocity for damping
+        if self.prev_pose is not None:
+            vel_t = self.prev_pose[0, :3] - self.prev_pose[1, :3]
+            q_diff = tf_trans.quaternion_multiply(tf_trans.quaternion_inverse(self.prev_pose[1, 3:]),
+                                                  self.prev_pose[0, 3:])
+            ang, ax, _ = tf_trans.rotation_from_matrix(tf_trans.quaternion_matrix(q_diff))
+            vel_r = ax * ang
+            vel = np.concatenate([vel_t, vel_r])
+        else:
+            vel = np.zeros([6])
+
+        T_mod = rnt.thing.get_position_impedance_control_action(T_des, K, D, ft, f_max, t_max, T_ft_ref_to_des_ref,
+                                                                self.tf_ft_tool.as_mat(), T_tool_to_des, vel)
         return T_mod
 
     def _get_reward(self):
@@ -565,7 +588,7 @@ class ThingRosEnv(gym.Env):
         # action client is super buggy, so the right way to do this would be using the
         # follow_joint_trajectory/result topics, but instead we'll just use a simple poll
         reset_timeout_republish_time = 5.5  # in case actionlib barfs -- should be longer than thing_control wait time
-        reset_non_movement_republish_time = 2.5  # again, for actionlib errors
+        reset_non_movement_republish_time = 5.5  # again, for actionlib errors
         reset_thresh_trans = .01
         reset_thresh_rot = .1
         settle_time = 1.0
@@ -636,14 +659,18 @@ class ThingRosEnv(gym.Env):
             time.sleep(0.5)  # zero reset node needs half a second of still robot to collect data to average
             self.gui_lock.acquire()
 
-        # generate observation for return -- need published trajectories above to be completed
-        obs, _ = self._prepare_obs()
-
         # other resets
         self.ep_timesteps = 0
         self.prev_action = None
         self.prev_pose = None
         self.prev_grip_pos = None
+        self.ft_lock.acquire()
+        self.ft_filter = None
+        self.ft_lock.release()
+
+        # generate observation for return -- need published trajectories above to be completed
+        obs, _ = self._prepare_obs()
+
         if self._reset_teleop_available:
             self.reset_teleop_complete = False
 
@@ -704,11 +731,12 @@ class ThingRosEnv(gym.Env):
             return_obs['pose'] = cur_pose
             return_arr.append(cur_pose)
 
-        if 'prev_pose' in self.state_data:
+        if 'prev_pose' in self.state_data or self.position_impedance_control:
             if self.prev_pose is None:
                 self.prev_pose = np.tile(cur_pose, (self.num_prev_pose + 1, 1))
             self.prev_pose = np.roll(self.prev_pose, 1, axis=0)
             self.prev_pose[0] = cur_pose
+        if 'prev_pose' in self.state_data:
             return_obs['prev_pose'] = self.prev_pose[1:].flatten()
             return_arr.append(return_obs['prev_pose'])
 
@@ -907,8 +935,19 @@ class ThingRosEnv(gym.Env):
         fo = np.array([fo.x, fo.y, fo.z])
         to = np.array([to.x, to.y, to.z])
         self.ft_lock.acquire()
-        self.latest_ft_raw = np.concatenate([fo, to])
+        if self.ft_filter is None:
+            self.ft_filter = np.tile(np.concatenate([fo, to]), [self.ft_filter_size, 1])
+        else:
+            self.ft_filter = np.roll(self.ft_filter, -1, axis=0)
+            self.ft_filter[-1] = np.concatenate([fo, to])
+        ft_filtered = np.median(self.ft_filter, axis=0)
+
+        self.latest_ft_raw = ft_filtered
         self.ft_lock.release()
+
+        # fix for env
+        fo = ft_filtered[:3]
+        to = ft_filtered[3:]
         fo[np.abs(fo) < 2.5] = 0
         to[np.abs(to) < .1] = 0
         force_fixed = fo / 50

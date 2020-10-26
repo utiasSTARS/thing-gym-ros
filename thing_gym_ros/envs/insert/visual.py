@@ -11,7 +11,8 @@ INSERT_IMAGE_DEFAULTS = dict(
     state_data=('pose', 'grip_pos', 'prev_grip_pos', 'force_torque', 'timestep'),
     max_real_time=10,
     grip_in_action=False,
-    default_grip_state='c'
+    default_grip_state='c',
+
 )
 
 PICK_AND_INSERT_IMAGE_DEFAULTS = dict(**INSERT_IMAGE_DEFAULTS)
