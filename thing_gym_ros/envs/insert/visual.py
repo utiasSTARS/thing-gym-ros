@@ -1,3 +1,5 @@
+import os
+
 from thing_gym_ros.envs.thing_ros_generic import XYZ_DEFAULTS, SIXDOF_DEFAULTS
 from thing_gym_ros.envs.insert.generic import ThingRosInsertGeneric
 from thing_gym_ros.envs.thing_ros_mb_generic import ThingRosMBEnv
@@ -84,3 +86,12 @@ class ThingRosPickAndInsert6DOFImageMB(ThingRosInsertGeneric, ThingRosMBEnv):
         super().__init__(**PICK_AND_INSERT_6DOF_IMAGE_DEFAULTS,
                          reset_teleop_available=reset_teleop_available,
                          success_feedback_available=success_feedback_available, **kwargs)
+
+
+class ThingRosPickAndInsertCloser6DOFImageMB(ThingRosInsertGeneric, ThingRosMBEnv):
+  def __init__(self, reset_teleop_available=False, success_feedback_available=False, **kwargs):
+    robot_config_file = os.path.join(os.path.dirname(__file__), "insert_new_config.yaml")
+    super().__init__(**PICK_AND_INSERT_6DOF_IMAGE_DEFAULTS,
+                     reset_teleop_available=reset_teleop_available,
+                     success_feedback_available=success_feedback_available,
+                     robot_config_file=robot_config_file, **kwargs)

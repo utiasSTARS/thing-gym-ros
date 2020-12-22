@@ -22,7 +22,7 @@ class ThingRosMBEnv(ThingRosEnv):
         """ A generic thing env that allows for moving the base between episodes. """
         super().__init__(*args, **kwargs)
 
-        if kwargs['info_env_only']:
+        if 'info_env_only' in kwargs and kwargs['info_env_only']:
             return
 
         # extra tf objs -- need (reasonably) calibrated camera
