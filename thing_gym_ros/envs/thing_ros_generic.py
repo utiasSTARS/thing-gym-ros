@@ -104,6 +104,9 @@ class ThingRosEnv(gym.Env):
         self.depth_in_state = depth_in_state
         self.success_causes_done = success_causes_done
         self.failure_causes_done = failure_causes_done
+        self.done_success = False
+        self.done_failure = False
+        self.done_timeout = False
         self.dense_reward = dense_reward
         self.num_objs = num_objs
         self.position_impedance_control = position_impedance_control
@@ -446,23 +449,30 @@ class ThingRosEnv(gym.Env):
         # get done
         if not reset_teleop_step:
             self.ep_timesteps += 1
-            done = self.ep_timesteps == self._max_episode_steps
+
+            done = self._get_done()
 
             # info includes information about success and failure
             info = dict(done_success=False, done_failure=False)
-            if self.ep_timesteps == self._max_episode_steps:
-                if self._success_feedback_available:
-                    self.gui_lock.release()
-                    if self._reset_teleop_available:
-                        print("Waiting for user feedback on success: press up success, down for fail. "
-                              "This must be taken care of in code handling teleop.")
-                        user_success_feedback = False
-                    else:
-                        user_success_feedback = input("Waiting for user feedback on success: press s then enter for success, "
-                                                      "or just enter for failure.")
-                    self.gui_lock.acquire()
-                    if user_success_feedback == 's':
-                        info['done_success'] = True
+            if done:
+                # get feedback on success only if a timeout ocurred
+                if self.done_timeout:
+                    if self._success_feedback_available:
+                        self.gui_lock.release()
+                        if self._reset_teleop_available:
+                            print("Waiting for user feedback on success: press up success, down for fail. "
+                                  "This must be taken care of in code handling teleop.")
+                            user_success_feedback = False
+                        else:
+                            user_success_feedback = input("Waiting for user feedback on success: press s then enter for success, "
+                                                          "or just enter for failure.")
+                        self.gui_lock.acquire()
+                        if user_success_feedback == 's':
+                            info['done_success'] = True
+                elif self.done_success:
+                    info['done_success'] = True
+                elif self.done_failure:
+                    info['done_failure'] = True
         else:
             done = False
             info = {}
@@ -535,6 +545,18 @@ class ThingRosEnv(gym.Env):
         """ Should be overwritten by children. """
         return 0.0
 
+    def _get_done(self):
+        """ Can be overwritten by children, but this gives a default based on human feedback or timeout. """
+        if self.ep_timesteps == self._max_episode_steps:
+            self.done_timeout = True
+            return True
+        elif (self.success_causes_done or self.failure_causes_done) and \
+            (self.done_failure or self.done_success):
+            return True
+        else:
+            return False
+
+
     def reset(self):
         """ Reset the environment to the beginning of an episode.
 
@@ -600,9 +622,10 @@ class ThingRosEnv(gym.Env):
         reset_non_movement_republish_time = 5.5  # again, for actionlib errors
         reset_thresh_trans = .01
         reset_thresh_rot = .1
-        settle_time = 1.0
+        settle_time = 1.5
         time_within_spec = 0.0
         within_spec = False
+        both_started = False
         within_spec_start = 0
         pub_start_time = time.time()
         dist_base_to_reset, rot_dist_base_to_reset = rnt.pos_quat_np.get_trans_rot_dist(
@@ -624,7 +647,10 @@ class ThingRosEnv(gym.Env):
                 time_within_spec = time.time() - within_spec_start
             else:
                 time_within_spec = 0.0
-            if cur_time - pub_start_time > reset_timeout_republish_time:
+            if norm(init_dist_base_to_reset - dist_base_to_reset) > .01 and \
+                norm(init_dist_arm_to_init - dist_arm_to_init) > .01:
+                both_started = True
+            if cur_time - pub_start_time > reset_timeout_republish_time and not within_spec and not both_started:
                 print("Republishing reset trajectories (possible action client issue). ")
                 self._publish_reset_trajectories(new_base_reset_mat=False)
                 pub_start_time = time.time()
@@ -632,7 +658,7 @@ class ThingRosEnv(gym.Env):
                 (norm(init_dist_base_to_reset - dist_base_to_reset) < .01 and
                  norm(init_rot_dist_base_to_reset - rot_dist_base_to_reset) < .01 and
                  norm(init_dist_arm_to_init - dist_arm_to_init) < .01 and
-                 norm(init_rot_dist_arm_to_init - rot_dist_arm_to_init) < .01):
+                 norm(init_rot_dist_arm_to_init - rot_dist_arm_to_init) < .01) and not within_spec and not both_started:
                 print("Reset trajectories not started, republishing (possible action client issue).")
                 self._publish_reset_trajectories(new_base_reset_mat=False)
                 pub_start_time = time.time()
@@ -673,6 +699,9 @@ class ThingRosEnv(gym.Env):
         self.prev_action = None
         self.prev_pose = None
         self.prev_grip_pos = None
+        self.done_success = False
+        self.done_failure = False
+        self.done_timeout = False
         self.ft_lock.acquire()
         self.ft_filter = None
         self.ft_lock.release()
@@ -817,6 +846,14 @@ class ThingRosEnv(gym.Env):
 
     def set_reset_teleop_complete(self):
         self.reset_teleop_complete = True
+
+    def set_done(self, success):
+        """ Called by running script to manually set done to True based on either success or failure. Should
+        be called before call to step. """
+        screen_str = "successful" if success else "not successful"
+        print("User manually says episode was " + screen_str)
+        self.done_success = success
+        self.done_failure = not success
 
     def _reset_helper(self):
         """ Called within reset, but to be overridden by child classes. This should somehow help the

@@ -8,7 +8,7 @@ STACK_IMAGE_DEFAULTS = dict(
     dense_reward=False,
     num_objs=2,
     state_data=('pose', 'grip_pos', 'prev_grip_pos', 'force_torque', 'timestep'),
-    max_real_time=10,
+    max_real_time=30,
     grip_in_action=True
 )
 
@@ -74,14 +74,20 @@ class ThingRosStack26DOFImage(ThingRosStackGeneric):
 
         super().__init__(**STACK_6DOF_IMAGE_DEFAULTS,
                          reset_teleop_available=reset_teleop_available,
-                         success_feedback_available=success_feedback_available, **kwargs)
+                         success_feedback_available=success_feedback_available,
+                         success_causes_done=True,
+                         obj_reset_box_size=(.15, .15),
+                         **kwargs)
 
 class ThingRosStack26DOFImageMB(ThingRosStackGeneric, ThingRosMBEnv):
     def __init__(self, reset_teleop_available=False, success_feedback_available=False, **kwargs):
 
         super().__init__(**STACK_6DOF_IMAGE_DEFAULTS,
                          reset_teleop_available=reset_teleop_available,
-                         success_feedback_available=success_feedback_available, **kwargs)
+                         success_feedback_available=success_feedback_available,
+                         success_causes_done=True,
+                         obj_reset_box_size=(.15, .15),
+                         **kwargs)
 
 class ThingRosStack36DOFImage(ThingRosStackGeneric):
     def __init__(self, reset_teleop_available=False, success_feedback_available=False, **kwargs):

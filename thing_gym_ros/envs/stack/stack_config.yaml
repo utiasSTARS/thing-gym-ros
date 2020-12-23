@@ -1,0 +1,69 @@
+# Base config file for all envs. Other envs will use these values unless they are specifically overwritten
+# with their own config files.
+
+# note: as a rule of thumb, these values should be as reusable as possible between envs, while values that
+#       are expected to change between each env should be actual class parameters.
+
+# resetting
+reset_base_tool_tf: [-0.01, 0.8977, 0.877, -1.05, -0.117, 1.61]  # 3 for trans, 3 for rot as explained in README
+reset_joint_pos: [-1.66, -1.27, 1.56, 4.38, -1.04, -1.98]     # 1 per joint, ensures consistent pose for above tf
+
+# control
+control_type: 'delta_tool'    # 'delta_tool', 'delta_joint', 'pos_tool', 'pos_joint', 'vel_tool', 'vel_joint'
+rot_act_rep: 'rod'            # 'rod' for rodrigues, 'quat' for quaternion
+control_freq: 10               # in Hz
+poses_ref_frame: 'b'          # 'b' or 'w' for base or world
+arm_max_trans_vel: .15        # m/s, also value used for resets
+arm_max_rot_vel: .3           # rad/s, also used for resets
+max_policy_time: .04          # max expected time that a running policy would take -- this should be set as low as possible
+                              # this also should include the max time to process images before they are returned
+                              # in step AND the forward time for the failure predictor
+                              # -- finally, this must be lower than 1/control_freq
+max_grip_force: 0             # integer from 0-255, 0 is min, 255 is max, settings for rFRA of gripper
+action_lpf_beta: 1.0           # low pass filter for action, 1 is no effect, closer to 0 is large effect
+                              # this should be as high as possible since otherwise the environment becomes
+                              # highly non-stationary
+
+# position impedance control
+position_impedance_K_trans: 3000  # all members of diagonal stiffness matrix for translational params
+#position_impedance_K_trans: 500  # all members of diagonal stiffness matrix for translational params
+position_impedance_D_trans: 1500   # diagonal damping matrix -- currently unused
+position_impedance_K_rot: 300    # same as above but for rotational params
+#position_impedance_K_rot: 50    # same as above but for rotational params
+position_impedance_D_rot: 10    # same as above but for rotational params -- currently unused
+position_impedance_max_F: 5       # Max allowable force in N (as a total in any direction)
+position_impedance_max_T: 0.5       # max allowable torque in Nm (total in any direction)
+
+
+# thing_control params
+servo_time_from_start: .3    # Time after publishing that controller should aim to be at new
+                              # position by. Lower --> faster, but jerkier. -- originally set to .15, .3 acts as an lpf
+traj_time_between_points: .3  # Time between points in full trajectory for resetting.
+
+# physical constraints
+pos_limits: [-0.55, 0.6, .76, 0.35, 1.2, 1.2]   # corners of a box relative to the robot base origin [-x, -y, -z, x, y z]
+
+# images
+img_width: 64
+img_height: 48
+img_center_crop: 2.0        # e.g. 2.0 cuts out half of height, half of width, only taking middle
+alt_img_topic: /camera/color/image_raw                        # if different from default from kinect or sim kinect
+alt_depth_topic: /camera/aligned_depth_to_color/image_raw     # if different from default from kinect or sim kinect
+depth_max_dist: 5.0         # in meters, anything beyond this value is fixed to this value, and the actual depth
+                            # img is stored as 0 for 0m, and 1.0 for this value and higher
+require_img_depth_registration: True  # whether img and depth must be registered, since user creating cam nodes
+                                      # needs to take care of this themselves
+cam_forward_axis: x         # forward axis of camera_link frame -- x for sim and realsense, z for kinect
+sensor: realsense           # realsense or kinect
+
+# numerical observations
+num_prev_pose: 5
+num_prev_grip: 2
+
+# base params (if moving_base is true -- otherwise ignored)
+base_theta_maximums: [-0.4, 0.4]    # radians based on making a circle around the workspace center
+cam_workspace_distance: .9         # meters from cam frame to workspace center
+base_reset_noise: .02               # std in meters and radians for resets of base
+
+# other data
+additional_topics: []       # other topics to add to state

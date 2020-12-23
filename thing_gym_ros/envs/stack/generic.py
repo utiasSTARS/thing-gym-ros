@@ -1,4 +1,5 @@
 import numpy as np
+import os
 
 from thing_gym_ros.envs.thing_ros_generic import ThingRosEnv
 
@@ -24,6 +25,7 @@ class ThingRosStackGeneric(ThingRosEnv):
                  obj_needs_resetting=True,  # for simple state reaching envs, goal can just be arbitrary pos in space
                  **kwargs
                  ):
+        robot_config_file = os.path.join(os.path.dirname(__file__), "stack_config.yaml")
         super().__init__(img_in_state=img_in_state,
                          depth_in_state=depth_in_state,
                          dense_reward=dense_reward,
@@ -39,6 +41,7 @@ class ThingRosStackGeneric(ThingRosEnv):
                          failure_causes_done=failure_causes_done,
                          reset_teleop_available=reset_teleop_available,
                          success_feedback_available=success_feedback_available,
+                         position_impedance_control=True,
                          **kwargs)
 
         self.obj_reset_box_size = obj_reset_box_size
