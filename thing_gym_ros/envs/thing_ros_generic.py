@@ -68,7 +68,10 @@ class ThingRosEnv(gym.Env):
                  success_feedback_available=False,
                  num_grip_fingers=3,
                  position_impedance_control=False,
-                 info_env_only=False  # if True, env can only be used for getting space sizes and other info
+                 init_gripper_random_lim=(0, 0, 0, 0, 0, 0),
+                 info_env_only=False,  # if True, env can only be used for getting space sizes and other info
+                 high_ft_causes_failure=False,
+                 high_ft_causes_failure_thresh=[80, 22]
                  ):
         """
         Requires thing + related topics and action servers (either in sim or reality) to already be launched
@@ -110,6 +113,7 @@ class ThingRosEnv(gym.Env):
         self.dense_reward = dense_reward
         self.num_objs = num_objs
         self.position_impedance_control = position_impedance_control
+        self.init_gripper_random_lim = init_gripper_random_lim
         self.pic_K_trans = self.cfg['position_impedance_K_trans']
         self.pic_D_trans = self.cfg['position_impedance_D_trans']
         self.pic_K_rot = self.cfg['position_impedance_K_rot']
@@ -119,6 +123,7 @@ class ThingRosEnv(gym.Env):
         self.image_width = self.cfg['img_width']
         self.image_height = self.cfg['img_height']
         self.image_center_crop = self.cfg['img_center_crop']
+        self.image_crop = self.cfg['img_crop']
         self._control_freq = self.cfg['control_freq']
         self.action_lpf_beta = self.cfg['action_lpf_beta']
         self._max_episode_steps = int(max_real_time * self._control_freq)
@@ -143,6 +148,8 @@ class ThingRosEnv(gym.Env):
             raise NotImplementedError('Implement if needed')
         else:
             self._quat_in_action = False
+        self.high_ft_causes_failure = high_ft_causes_failure
+        self.high_ft_causes_failure_thresh = high_ft_causes_failure_thresh
 
         # gym setup
         self._num_trans = sum(self.valid_act_t_dof)
@@ -237,7 +244,7 @@ class ThingRosEnv(gym.Env):
         self._reset_base_tool_mat[:3, 3] = self._reset_base_tool_tf_arr[:3]
         self._reset_joint_pos = np.array(self.cfg['reset_joint_pos'])
         self._max_reset_trans = 2.0  # meters
-        self._max_reset_rot = 2.0  # radians
+        self._max_reset_rot = 2.5  # radians
         self._reset_vel_trans = .15  # m/s
         self._reset_vel_rot = .5  # rad/s
         self._reset_base_vel_trans = .15  # m/s
@@ -427,6 +434,11 @@ class ThingRosEnv(gym.Env):
         else:
             grip = self.default_grip_state
         g_msg = KeyboardTrigger()
+
+        # modify gripper based on config for max gripper open pos
+        # if grip == 'o':
+        #     grip = '75'
+
         g_msg.label = grip
 
         self.pub_servo.publish(servo_msg)
@@ -449,6 +461,12 @@ class ThingRosEnv(gym.Env):
         # get done
         if not reset_teleop_step:
             self.ep_timesteps += 1
+
+            # get high ft causing failure
+            if self.high_ft_causes_failure:
+                if not self.done_failure:
+                    self.done_failure = self._get_high_ft_failure()
+            # print("Force norm: ", norm(self.latest_ft_raw[:3]), ", Torque norm: ", norm(self.latest_ft_raw[3:]))
 
             done = self._get_done()
 
@@ -545,6 +563,22 @@ class ThingRosEnv(gym.Env):
         """ Should be overwritten by children. """
         return 0.0
 
+    def _get_high_ft_failure(self):
+        """ Gives True if the latest high ft is above a threshold, to be used as a failure condition, ideally
+        to prevent the robot from protective stopping. """
+        ft = self.latest_ft_raw
+        f_norm = norm(ft[:3])
+        t_norm = norm(ft[3:])
+        thresh = self.high_ft_causes_failure_thresh
+        if f_norm > thresh[0]:
+            print("Episode failure caused by high force of %.3f, threshold %.3f" % (f_norm, thresh[0]))
+            return True
+        elif t_norm > thresh[1]:
+            print("Episode failure caused by high torque of %.3f, threshold %.3f" % (t_norm, thresh[1]))
+            return True
+        else:
+            return False
+
     def _get_done(self):
         """ Can be overwritten by children, but this gives a default based on human feedback or timeout. """
         if self.ep_timesteps == self._max_episode_steps:
@@ -555,7 +589,6 @@ class ThingRosEnv(gym.Env):
             return True
         else:
             return False
-
 
     def reset(self):
         """ Reset the environment to the beginning of an episode.
@@ -582,6 +615,15 @@ class ThingRosEnv(gym.Env):
             self._reset_helper()
             self.gui_lock.release()
             return
+
+        # randomize initial gripper pose
+        if self.init_gripper_random_lim != (0, 0, 0, 0, 0, 0):
+            ep_reset_base_tool_tf_arr = self._reset_base_tool_tf_arr + self.np_random.uniform(
+                low=-np.array(self.init_gripper_random_lim) / 2,
+                high=np.array(self.init_gripper_random_lim) / 2, size=6)
+            # euler is a bad idea for large sample space, but for small should be fine
+            self._reset_base_tool_mat = tf_trans.euler_matrix(*ep_reset_base_tool_tf_arr[3:])
+            self._reset_base_tool_mat[:3, 3] = ep_reset_base_tool_tf_arr[:3]
 
         # first do safety checks to make sure movement isn't too dramatic
         self.tf_base_tool.update()
@@ -678,8 +720,10 @@ class ThingRosEnv(gym.Env):
         self.arm_joint_pos_lock.acquire()
         joint_pos_dist = norm(self._reset_joint_pos - self.arm_joint_pos_latest)
         self.arm_joint_pos_lock.release()
-        assert joint_pos_dist < .1, "Arm EE pos is right, but joint positions are wrong. Manually reset arm to" \
-                                    "joint pos %s." % self._reset_joint_pos
+        if self.init_gripper_random_lim == (0, 0, 0, 0, 0, 0):
+            assert joint_pos_dist < .1, "Arm EE pos is right, but joint positions are wrong. " \
+                                        "Currently read joint positions are %s. Manually reset arm to " \
+                                        "joint pos %s." % (self.arm_joint_pos_latest, self._reset_joint_pos)
 
         # TODO ensure gripper is in correct position
 
@@ -917,6 +961,8 @@ class ThingRosEnv(gym.Env):
 
         if self.image_center_crop != 1.0:
             img_cropped = thing_gym_ros_env_utils.center_crop_img(img, self.image_center_crop)
+        elif self.image_crop != [[0, 0], [1, 1]]:
+            img_cropped = thing_gym_ros_env_utils.crop_img(img, self.image_crop)
         else:
             img_cropped = img
 
@@ -953,6 +999,8 @@ class ThingRosEnv(gym.Env):
 
         if self.image_center_crop != 1.0:
             depth_cropped = thing_gym_ros_env_utils.center_crop_img(depth_fixed, self.image_center_crop)
+        elif self.image_crop != [[0, 0], [1, 1]]:
+            depth_cropped = thing_gym_ros_env_utils.crop_img(depth_fixed, self.image_crop)
         else:
             depth_cropped = depth_fixed
 

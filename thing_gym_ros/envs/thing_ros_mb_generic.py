@@ -66,6 +66,9 @@ class ThingRosMBEnv(ThingRosEnv):
             high=main_theta + self._base_theta_maximums[1],
             size=1
         )
+
+        # theta = -.3   # for testing specific theta values
+
         des_theta = main_theta + theta
         b_x, b_y = self.gen_base_tf_from_theta_and_ws_center(des_theta, cam_forward_axis=self._cam_forward_axis)
         noise = self._base_reset_noise

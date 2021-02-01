@@ -1,37 +1,37 @@
-import numpy as np
 import os
+
+import numpy as np
 
 from thing_gym_ros.envs.thing_ros_generic import ThingRosEnv
 
 
-class ThingRosStackGeneric(ThingRosEnv):
+class ThingRosDrawerGeneric(ThingRosEnv):
     def __init__(self,
                  img_in_state,
                  depth_in_state,
                  dense_reward,
                  grip_in_action,
+                 default_grip_state,
                  num_objs,  # number of objects that can be interacted with
                  robot_config_file=None,  # yaml config file
-                 # state_data=('pose', 'prev_pose', 'grip_pos', 'prev_grip_pos', 'obj_pos', 'obj_rot', 'force_torque',
-                 #             'timestep'),
                  state_data=('pose', 'prev_pose', 'grip_pos', 'prev_grip_pos', 'obj_pos', 'obj_rot', 'force_torque'),
                  valid_act_t_dof=(1, 1, 1),
                  valid_act_r_dof=(1, 1, 1),
-                 max_real_time=10,  # in seconds
+                 max_real_time=15,  # in seconds
                  success_causes_done=False,
                  failure_causes_done=False,
                  reset_teleop_available=False,
                  success_feedback_available=False,
-                 obj_reset_box_size=(.05, .05),
+                 obj_reset_box_size=(0, 0),
                  obj_needs_resetting=True,  # for simple state reaching envs, goal can just be arbitrary pos in space
                  **kwargs
                  ):
-        robot_config_file = os.path.join(os.path.dirname(__file__), "stack_config.yaml")
+        robot_config_file = os.path.join(os.path.dirname(__file__), "drawer_config.yaml")
         super().__init__(img_in_state=img_in_state,
                          depth_in_state=depth_in_state,
                          dense_reward=dense_reward,
                          grip_in_action=grip_in_action,
-                         default_grip_state='o',  # 'o' for open, 'c' for closed
+                         default_grip_state=default_grip_state,  # 'o' for open, 'c' for closed
                          num_objs=num_objs,  # number of objects that can be interacted with
                          robot_config_file=robot_config_file,  # yaml config file
                          state_data=state_data,

@@ -12,8 +12,7 @@ class ThingRosInsertGeneric(ThingRosEnv):
                  default_grip_state,
                  num_objs,  # number of objects that can be interacted with
                  robot_config_file=None,  # yaml config file
-                 state_data=('pose', 'prev_pose', 'grip_pos', 'prev_grip_pos', 'obj_pos', 'obj_rot', 'force_torque',
-                             'timestep'),
+                 state_data=('pose', 'prev_pose', 'grip_pos', 'prev_grip_pos', 'obj_pos', 'obj_rot', 'force_torque'),
                  valid_act_t_dof=(1, 1, 1),
                  valid_act_r_dof=(1, 1, 1),
                  max_real_time=10,  # in seconds

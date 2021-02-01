@@ -10,7 +10,8 @@ INSERT_IMAGE_DEFAULTS = dict(
     depth_in_state=True,
     dense_reward=False,
     num_objs=1,
-    state_data=('pose', 'grip_pos', 'prev_grip_pos', 'force_torque', 'timestep'),
+    # state_data=('pose', 'grip_pos', 'prev_grip_pos', 'force_torque', 'timestep'),
+    state_data=('pose', 'grip_pos', 'prev_grip_pos', 'force_torque'),
     max_real_time=10,
     grip_in_action=False,
     default_grip_state='c',
@@ -91,7 +92,10 @@ class ThingRosPickAndInsert6DOFImageMB(ThingRosInsertGeneric, ThingRosMBEnv):
 class ThingRosPickAndInsertCloser6DOFImageMB(ThingRosInsertGeneric, ThingRosMBEnv):
   def __init__(self, reset_teleop_available=False, success_feedback_available=False, **kwargs):
     robot_config_file = os.path.join(os.path.dirname(__file__), "insert_new_config.yaml")
+    # PICK_AND_INSERT_6DOF_IMAGE_DEFAULTS['state_data'] = ('pose', 'grip_pos', 'prev_grip_pos', 'force_torque', 'timestep')
+    PICK_AND_INSERT_6DOF_IMAGE_DEFAULTS['state_data'] = ('pose', 'grip_pos', 'prev_grip_pos', 'force_torque')
     super().__init__(**PICK_AND_INSERT_6DOF_IMAGE_DEFAULTS,
+                     success_causes_done=True,
                      reset_teleop_available=reset_teleop_available,
                      success_feedback_available=success_feedback_available,
                      robot_config_file=robot_config_file, **kwargs)
