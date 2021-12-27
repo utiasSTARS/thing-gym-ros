@@ -2,7 +2,7 @@
 A repository containing gym-based envs built on ROS to be combined with the Thing mobile manipulation platform at UTIAS. 
 
 ## Requirements
-This package is designed to be combined with the [thing ROS package](https://github.com/utiasSTARS/thing), which currently must be built and run in ROS Indigo and Ubuntu 14.04. Assuming that your computer is running a later version of Ubuntu, the thing packages can be built and run in a [docker image](https://github.com/trevorablett/rosdocked-thing/tree/nvidia-fixes).
+This package is designed to be combined with the [thing ROS package](https://github.com/utiasSTARS/thing) which is currently private and must be built and run in ROS Indigo and Ubuntu 14.04. We are making it public with the goal of making our experimental results using it easier to produce, since the reliance on our private Thing package is minimal. Assuming that your computer is running a later version of Ubuntu, the thing packages can be built and run in a [docker image](https://github.com/trevorablett/rosdocked-thing/tree/nvidia-fixes).
 
 The environments are tested with ROS Noetic and Ubuntu 20.04. Since ROS Noetic is built with python3, you can directly call these gym envs from your learning code built on python3.
 
